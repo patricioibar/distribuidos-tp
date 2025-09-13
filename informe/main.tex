@@ -1,0 +1,112 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[left=2.5cm, top=2.5cm, right=2.5cm, bottom=2.5cm]{geometry}
+\usepackage[spanish]{babel}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\setlength{\parskip}{10pt}
+\definecolor{vscdbg}{rgb}{0.80,0.80,0.85}      % Slightly darker Background
+\definecolor{vscdstring}{rgb}{0.13,0.55,0.13}  % Strings (green)
+\definecolor{vscdcomment}{rgb}{0.46,0.54,0.60} % Comments
+\definecolor{vscdkeyword}{rgb}{0.56,0.38,0.68} % Keywords (darker for contrast)
+\definecolor{vscdnumber}{rgb}{0.48,0.38,0.26}  % Numbers (darker for contrast)
+\definecolor{vscdgray}{rgb}{0.40,0.40,0.40}    % Line numbers
+\definecolor{vscdtext}{rgb}{0.30,0.30,0.30}    % Main text (lighter gray)
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{vscdbg},
+    basicstyle=\ttfamily\footnotesize\color{vscdtext},
+    commentstyle=\color{vscdcomment}\itshape,
+    numberstyle=\tiny\color{vscdgray},
+    stringstyle=\color{vscdstring},
+    breakatwhitespace=false,
+    captionpos=b,
+    numbers=left,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    xleftmargin=50pt,
+    xrightmargin=50pt,
+    frame=single,
+    aboveskip=10pt,
+    belowskip=10pt,
+    columns=flexible
+}
+
+\lstset{style=mystyle}
+
+\definecolor{consolebg}{rgb}{0.95,0.95,0.92}
+\definecolor{consoletext}{rgb}{0.20,0.20,0.20}
+\definecolor{consoleprompt}{rgb}{0.60,0.60,0.60}
+\lstdefinestyle{console}{
+    backgroundcolor=\color{consolebg},
+    basicstyle=\ttfamily\footnotesize\color{consoletext},
+    numberstyle=\tiny\color{consoleprompt},
+    commentstyle=\color{consoleprompt}\itshape,
+    showstringspaces=false,
+    showspaces=false,
+    showtabs=false,
+    frame=single,
+    xleftmargin=30pt,
+    xrightmargin=30pt,
+    aboveskip=8pt,
+    belowskip=8pt,
+    columns=flexible,
+    numbers=none,
+    keywordstyle=\color{consoleprompt},
+    moredelim=**[is][\color{consoleprompt}]{@}{@}
+}
+
+\linespread{1}
+\hypersetup{
+    pdftitle={(TA050) Trabajo Práctico},
+    pdfauthor={
+        Patricio Ibar, Valentín Marturet, Lautaro Fritz
+        },
+    pdfsubject={Informe del Trabajo Práctico de la materia Sistemas Distribuidos TA050},
+}
+\begin{document}
+    
+    
+    \begin{center}
+        \includegraphics[width=0.5\textwidth]
+        {imagenes/Logo-fiuba.png}
+
+        \vspace{1cm}
+        {\LARGE \textbf{(TA050) - Sistemas Distribuidos}} \\
+        \vspace{1cm}
+        {\LARGE \textbf{Trabajo Práctico (2C2025)}} \\
+        \vspace{1cm}
+        \begin{table}[h]
+            \centering
+            \begin{tabular}{c c c}
+                \hline
+                \textbf{Nombre y Apellido} & \textbf{Padrón} & \textbf{Email} \\ \hline
+                Valentín Marturet & 104526 & vmarturet@fi.uba.ar \\
+                Lautaro Fritz &  & lfritz@fi.uba.ar \\
+                Patricio Ibar & 109569 & pibar@fi.uba.ar \\
+                \hline
+            \end{tabular}
+        \end{table}
+
+        \vspace{1cm}
+
+        17 de septiembre de 2025
+
+    \end{center}
+
+    \newpage
+
+    \tableofcontents
+    \newpage
+
+    \input{secciones/introduccion}
+    \input{secciones/arquitectura}
+
+    \newpage
+
+    
+\end{document}  
