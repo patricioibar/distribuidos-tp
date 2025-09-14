@@ -1,0 +1,34 @@
+\newpage
+\section{Planificación}
+
+Se propone la siguiente división de tareas para la implementación de este proyecto.
+
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.3} % Espaciado entre filas
+\begin{tabularx}{\textwidth}{|X|l|}
+\hline
+\textbf{\centering Tareas} & \textbf{Responsable} \\ \hline
+\textbf{Cliente:} Lectura y envío de archivos al servidor. &  \\ \hline
+\textbf{Cliente:} Recepción y parseo de respuestas del servidor. &  \\ \hline
+\textbf{Servidor:} Configuración e inicio de escucha de conexiones. &  \\ \hline
+\textbf{Servidor:} Parseo de mensajes y distribución de datos a través de RabbitMQ. &  \\ \hline
+\textbf{Middleware:} Setup del nodo RabbitMQ. &  \\ \hline
+\textbf{Servidor:} Construcción y envío de la respuesta. &  \\ \hline
+\textbf{Filtros:} Lógica del filtro de transacciones entre 2024 y 2025, entre las 6am y 11pm. &  \\ \hline
+\textbf{Filtros:} Filtro de transacciones de montos mayores a \$75. &  \\ \hline
+\textbf{Filtros:} Filtro del detalle por ítems de las transacciones entre el 2024 y 2025, entre las 6am y las 11pm. &  \\ \hline
+\textbf{Agregadores:} Agregador de cantidad de compras que realizó cada usuario. &  \\ \hline
+\textbf{Agregadores:} Agregador de monto total de pagos, por semestre (TPV). &  \\ \hline
+\textbf{Agregadores:} Agregador de cantidad de ventas por producto, por mes. &  \\ \hline
+\textbf{Agregadores:} Agregador de ganancia por producto, por mes. &  \\ \hline
+\textbf{Reductores:} Reductor de monto total de pagos. &  \\ \hline
+\textbf{Reductores:} Reductor de cantidad de compras que realizó cada usuario. &  \\ \hline
+\textbf{Joiner:} Proceso que realiza un Join entre el Top 3 de los usuarios con más compras y su cumpleaños. &  \\ \hline
+\textbf{Reductores:} Reductor de ganancia por producto, por mes. &  \\ \hline
+\textbf{Reductores:} Reductor de cantidad de ventas por producto, por mes. &  \\ \hline
+\textbf{Parser:} Unificación de los resultados de todos los reductores. &  \\ \hline
+\textbf{Orquestación:} Orquestar el levantamiento de todos los necesarios para el funcionamiento del sistema. &  \\ \hline
+\end{tabularx}
+\caption{División de tareas para la implementación del proyecto}
+\end{table}
