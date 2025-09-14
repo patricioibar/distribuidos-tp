@@ -1,0 +1,17 @@
+\section{Alcance}
+El proyecto de Coffee Analysis consiste en un sistema distribuido para realizar análisis de datos sobre la información de clientes y ventas de distintas sucursales de una cadena de cafeterías. Se cuenta con la información de las transacciones de todas las sucursales desde Julio del 2023 hasta Junio del 2025, con el detalles de qué ítems se vendieron, qué usuario realizó la transacción y en qué sucursal fue realizada.
+
+Se pide que el sistema pueda realizar las siguientes queries:
+\begin{enumerate}
+    \item Transacciones (Id y monto) realizadas durante 2024 y 2025 entre las 06:00 AM y las 11:00 PM con monto total mayor o igual a 75.
+    \item Productos más vendidos (nombre y cantidad) y productos que más ganancias han generado (nombre y monto), para cada mes en 2024 y 2025.
+    \item TPV (Total Payment Value) por cada semestre en 2024 y 2025, para cada sucursal, para transacciones realizadas entre las 06:00 AM y las 11:00 PM.
+    \item Fecha de cumpleaños de los 3 clientes que han hecho más compras durante 2024 y 2025, para cada sucursal.
+\end{enumerate}
+
+Además, el sistema tiene que:
+\begin{itemize}
+    \item Estar optimizado para entornos multicomputador.
+    \item Soportar un incremento en los elementos de cómputo, para poder así escalar los volúmenes de información a procesar.
+    \item Soportar una única ejecución del procesamiento y proveer gracefull quit frente a señales \texttt{SIGTERM}.
+\end{itemize}
