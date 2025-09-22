@@ -9,11 +9,19 @@ type ConsumeChannel *<-chan amqp.Delivery
 
 type MessageMiddlewareError int
 
+// Error implements error.
+func (m MessageMiddlewareError) Error() string {
+	panic("unimplemented")
+}
+
 const (
 	MessageMiddlewareMessageError MessageMiddlewareError = iota + 1
 	MessageMiddlewareDisconnectedError
 	MessageMiddlewareCloseError
 	MessageMiddlewareDeleteError
+
+	// hablar con el corrector
+	MessageMiddlewareProducerCannotConsumeError
 )
 
 type MessageMiddlewareQueue struct {
