@@ -17,7 +17,7 @@ type Consumer struct {
 	startOnce sync.Once
 }
 
-func NewConsumer(name string) (*Consumer, error) {
+func NewConsumer(name, exchangeName string) (*Consumer, error) {
 	ch, err := GetConnection("amqp://guest:guest@localhost:5672/").Channel()
 	if err != nil {
 		return nil, err
@@ -32,6 +32,19 @@ func NewConsumer(name string) (*Consumer, error) {
 		false, // no-wait
 		nil,   // arguments
 	)
+	if err != nil {
+		_ = ch.Close()
+		return nil, err
+	}
+
+	err = ch.QueueBind(
+		name,         // queue name
+		"",           // routing key — ignored for fanout
+		exchangeName, // exchange name
+		false,
+		nil,
+	)
+
 	if err != nil {
 		_ = ch.Close()
 		return nil, err
