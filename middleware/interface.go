@@ -1,21 +1,25 @@
 package middleware
 
 import (
+	"fmt"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type MiddlewareChannel *amqp.Channel
 type ConsumeChannel *<-chan amqp.Delivery
 
-type MessageMiddlewareError int
+type MessageMiddlewareError struct {
+	Code int
+	Msg  string
+}
 
-// Error implements error.
-func (m MessageMiddlewareError) Error() string {
-	panic("unimplemented")
+func (e *MessageMiddlewareError) Error() string {
+	return fmt.Sprintf("middleware error (%d): %s", e.Code, e.Msg)
 }
 
 const (
-	MessageMiddlewareMessageError MessageMiddlewareError = iota + 1
+	MessageMiddlewareMessageError int = iota + 1
 	MessageMiddlewareDisconnectedError
 	MessageMiddlewareCloseError
 	MessageMiddlewareDeleteError
@@ -47,31 +51,31 @@ type MessageMiddleware interface {
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
 	*/
-	StartConsuming(onMessageCallback onMessageCallback) (error MessageMiddlewareError)
+	StartConsuming(onMessageCallback onMessageCallback) (error *MessageMiddlewareError)
 
 	/*
 	   Si se estaba consumiendo desde la cola/exchange, se detiene la escucha. Si
 	   no se estaba consumiendo de la cola/exchange, no tiene efecto, ni levanta
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	*/
-	StopConsuming() (error MessageMiddlewareError)
+	StopConsuming() (error *MessageMiddlewareError)
 
 	/*
 	   Envía un mensaje a la cola o al tópico con el que se inicializó el exchange.
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
 	*/
-	Send(message []byte) (error MessageMiddlewareError)
+	Send(message []byte) (error *MessageMiddlewareError)
 
 	/*
 	   Se desconecta de la cola o exchange al que estaba conectado.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareCloseError.
 	*/
-	Close() (error MessageMiddlewareError)
+	Close() (error *MessageMiddlewareError)
 
 	/*
 	   Se fuerza la eliminación remota de la cola o exchange.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareDeleteError.
 	*/
-	Delete() (error MessageMiddlewareError)
+	Delete() (error *MessageMiddlewareError)
 }

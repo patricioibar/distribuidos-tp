@@ -29,7 +29,7 @@ func GetConnection(url string) *RabbitConn {
 
 func (r *RabbitConn) Channel() (*amqp.Channel, error) {
 	if r.conn.IsClosed() {
-		return nil, MessageMiddlewareDisconnectedError
+		return nil, &MessageMiddlewareError{Code: MessageMiddlewareDisconnectedError, Msg: "Connection is closed"}
 	}
 	return r.conn.Channel()
 }
