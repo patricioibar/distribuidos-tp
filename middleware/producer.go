@@ -48,8 +48,7 @@ func (p *Producer) Send(message []byte) (error *MessageMiddlewareError) {
 		false,
 		false,
 		amqp.Publishing{
-			Headers:     nil,
-			ContentType: "application/octet-stream",
+			ContentType: "text/plain",
 			Body:        message,
 		})
 
@@ -61,9 +60,17 @@ func (p *Producer) Send(message []byte) (error *MessageMiddlewareError) {
 }
 
 func (p *Producer) Close() (error *MessageMiddlewareError) {
-
+	err := p.channel.Close()
+	if err != nil {
+		return &MessageMiddlewareError{Code: MessageMiddlewareCloseError, Msg: "Failed to close channel"}
+	}
+	return nil
 }
 
 func (p *Producer) Delete() (error *MessageMiddlewareError) {
-
+	err := p.channel.ExchangeDelete(p.name, false, false)
+	if err != nil {
+		return &MessageMiddlewareError{Code: MessageMiddlewareDeleteError, Msg: "Failed to delete exchange"}
+	}
+	return nil
 }
