@@ -1,7 +1,12 @@
 package middleware
 
+import (
+	amqp "github.com/rabbitmq/amqp091-go"
+)
+
 type Producer struct {
-	exchange MessageMiddlewareExchange
+	name    string
+	channel *amqp.Channel
 }
 
 func NewProducer(name string) (*Producer, error) {
@@ -9,13 +14,6 @@ func NewProducer(name string) (*Producer, error) {
 
 	if err != nil {
 		return nil, err
-	}
-
-	exchange := MessageMiddlewareExchange{
-		exchangeName:   name,
-		routeKeys:      []string{},
-		channel:        ch,
-		consumeChannel: nil,
 	}
 
 	err = ch.ExchangeDeclare(
@@ -28,25 +26,44 @@ func NewProducer(name string) (*Producer, error) {
 		nil,      // arguments
 	)
 
-	return &Producer{exchange: exchange}, nil
+	if err != nil {
+		return nil, err
+	}
+
+	return &Producer{name: name, channel: ch}, nil
 }
 
-func (p *Producer) StartConsuming(onMessageCallback onMessageCallback) (error MessageMiddlewareError) {
-	return MessageMiddlewareProducerCannotConsumeError
+func (p *Producer) StartConsuming(onMessageCallback onMessageCallback) (error *MessageMiddlewareError) {
+	return &MessageMiddlewareError{Code: MessageMiddlewareProducerCannotConsumeError, Msg: "Producer cannot consume messages"}
 }
 
-func (p *Producer) StopConsuming() (error MessageMiddlewareError) {
-	return MessageMiddlewareProducerCannotConsumeError
+func (p *Producer) StopConsuming() (error *MessageMiddlewareError) {
+	return &MessageMiddlewareError{Code: MessageMiddlewareProducerCannotConsumeError, Msg: "Producer cannot consume messages"}
 }
 
-func (p *Producer) Send(message []byte) (error MessageMiddlewareError) {
+func (p *Producer) Send(message []byte) (error *MessageMiddlewareError) {
+	err := p.channel.Publish(
+		p.name,
+		"",
+		false,
+		false,
+		amqp.Publishing{
+			Headers:     nil,
+			ContentType: "application/octet-stream",
+			Body:        message,
+		})
+
+	if err != nil {
+		return &MessageMiddlewareError{Code: MessageMiddlewareDisconnectedError, Msg: "Failed to send message"}
+	}
+
+	return nil
+}
+
+func (p *Producer) Close() (error *MessageMiddlewareError) {
 
 }
 
-func (p *Producer) Close() (error MessageMiddlewareError) {
-
-}
-
-func (p *Producer) Delete() (error MessageMiddlewareError) {
+func (p *Producer) Delete() (error *MessageMiddlewareError) {
 
 }
