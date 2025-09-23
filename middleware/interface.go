@@ -7,7 +7,7 @@ import (
 )
 
 type MiddlewareChannel *amqp.Channel
-type ConsumeChannel *<-chan amqp.Delivery
+type MiddlewareMessage amqp.Delivery
 
 type MessageMiddlewareError struct {
 	Code int
@@ -26,22 +26,11 @@ const (
 
 	// hablar con el corrector
 	MessageMiddlewareProducerCannotConsumeError
+	MessageMiddlewareConsumerCannotSendError
 )
 
-type MessageMiddlewareQueue struct {
-	queueName      string
-	channel        MiddlewareChannel
-	consumeChannel ConsumeChannel
-}
-
-type MessageMiddlewareExchange struct {
-	exchangeName   string
-	routeKeys      []string
-	channel        MiddlewareChannel
-	consumeChannel ConsumeChannel
-}
-
-type onMessageCallback func(consumeChannel ConsumeChannel, done chan error)
+// cambié el done chan a un puntero para poder devolver nil
+type onMessageCallback func(consumeChannel MiddlewareMessage, done chan *MessageMiddlewareError)
 
 // Puede especificarse un tipo más específico para T si se desea
 type MessageMiddleware interface {
