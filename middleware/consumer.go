@@ -71,7 +71,7 @@ func NewConsumer(name string) (*Consumer, error) {
 	}, nil
 }
 
-func (c *Consumer) StartConsuming(onMessageCallback onMessageCallback) *MessageMiddlewareError {
+func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageMiddlewareError {
 	var startErr error
 
 	c.startOnce.Do(func() {

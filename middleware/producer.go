@@ -33,7 +33,7 @@ func NewProducer(name string) (*Producer, error) {
 	return &Producer{name: name, channel: ch}, nil
 }
 
-func (p *Producer) StartConsuming(onMessageCallback onMessageCallback) (error *MessageMiddlewareError) {
+func (p *Producer) StartConsuming(onMessageCallback OnMessageCallback) (error *MessageMiddlewareError) {
 	return &MessageMiddlewareError{Code: MessageMiddlewareProducerCannotConsumeError, Msg: "Producer cannot consume messages"}
 }
 

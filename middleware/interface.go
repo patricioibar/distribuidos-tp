@@ -30,7 +30,7 @@ const (
 )
 
 // cambié el done chan a un puntero para poder devolver nil
-type onMessageCallback func(consumeChannel MiddlewareMessage, done chan *MessageMiddlewareError)
+type OnMessageCallback func(consumeChannel MiddlewareMessage, done chan *MessageMiddlewareError)
 
 // Puede especificarse un tipo más específico para T si se desea
 type MessageMiddleware interface {
@@ -40,7 +40,7 @@ type MessageMiddleware interface {
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
 	*/
-	StartConsuming(onMessageCallback onMessageCallback) (error *MessageMiddlewareError)
+	StartConsuming(onMessageCallback OnMessageCallback) (error *MessageMiddlewareError)
 
 	/*
 	   Si se estaba consumiendo desde la cola/exchange, se detiene la escucha. Si
