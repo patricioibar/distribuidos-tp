@@ -42,6 +42,6 @@ func main() {
 		log.Criticalf("%s", err)
 	}
 
-	aggregator := common.NewAggregator(config)
+	aggregator := common.NewAggregatorWorker(config)
 	aggregator.Start()
 }
