@@ -62,7 +62,7 @@ func (a *AggregatorWorker) Start() {
 	for {
 		select {
 		case <-a.closeChan:
-			break
+			return
 		case batch := <-a.batchChan:
 			data, err := json.Marshal(batch)
 			if err != nil {
@@ -130,11 +130,11 @@ func aggregateRows(batch RowsBatch, config *Config) ([][]interface{}, error) {
 
 	// key: group by values concatenated, value: aggregations list
 	groupedData := make(map[string][]a.Aggregation)
-	for i, row := range batch.Rows {
+	for _, row := range batch.Rows {
 		if len(row) != len(batch.ColumnNames) {
 			return nil, &mw.MessageMiddlewareError{
 				Code: mw.MessageMiddlewareMessageError,
-				Msg:  "Row length does not match column names length at row index " + string(i),
+				Msg:  "Row length does not match column names length ",
 			}
 		}
 
@@ -149,7 +149,7 @@ func aggregateRows(batch RowsBatch, config *Config) ([][]interface{}, error) {
 
 		for i, agg := range config.Aggregations {
 			idx := aggIndexes[agg.Col]
-			groupedData[key][i] = groupedData[key][i].(a.Aggregation).Add(row[idx])
+			groupedData[key][i] = groupedData[key][i].Add(row[idx])
 		}
 	}
 
