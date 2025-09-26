@@ -5,6 +5,6 @@ use (
 	./analyst
 	./coffee-analyzer
 	./communication
-	./inner-communication
+	./innercommunication
 	./middleware
 )
