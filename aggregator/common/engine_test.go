@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
@@ -93,7 +94,7 @@ func TestSumAggregatorWorker(t *testing.T) {
 		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
 	}
 
-	var outputBatch common.RowsBatch
+	var outputBatch ic.RowsBatch
 	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
@@ -134,7 +135,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
 	}
 
-	var outputBatch common.RowsBatch
+	var outputBatch ic.RowsBatch
 	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
@@ -178,7 +179,7 @@ func TestMultipleAggregationsWorker(t *testing.T) {
 	if len(output.sentMessages) != 1 {
 		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
 	}
-	var outputBatch common.RowsBatch
+	var outputBatch ic.RowsBatch
 	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %v", err)

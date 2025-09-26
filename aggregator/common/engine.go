@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/op/go-logging"
+	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
@@ -18,19 +19,12 @@ type AggregatorWorker struct {
 	input     mw.MessageMiddleware
 	output    mw.MessageMiddleware
 	onMessage mw.OnMessageCallback
-	batchChan chan RowsBatch
+	batchChan chan ic.RowsBatch
 	closeChan chan struct{}
 }
 
-// momentaneamente defino este struct acá,
-// luego debería ponerse en una libreria compartida por todos los workers
-type RowsBatch struct {
-	ColumnNames []string        `json:"column_names"`
-	Rows        [][]interface{} `json:"rows"`
-}
-
 func NewAggregatorWorker(config *Config, input mw.MessageMiddleware, output mw.MessageMiddleware) *AggregatorWorker {
-	batchChan := make(chan RowsBatch, maxBatchBufferSize)
+	batchChan := make(chan ic.RowsBatch, maxBatchBufferSize)
 	onMessage := onMessageFromConfig(config, batchChan)
 
 	return &AggregatorWorker{
@@ -76,11 +70,11 @@ func (a *AggregatorWorker) Close() {
 	close(a.closeChan)
 }
 
-func onMessageFromConfig(config *Config, batchChan chan RowsBatch) mw.OnMessageCallback {
+func onMessageFromConfig(config *Config, batchChan chan ic.RowsBatch) mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 
 		jsonStr := string(consumeChannel.Body)
-		var batch RowsBatch
+		var batch ic.RowsBatch
 		if err := json.Unmarshal([]byte(jsonStr), &batch); err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
 			// no mando un error por el chan acá,
@@ -113,7 +107,7 @@ func onMessageFromConfig(config *Config, batchChan chan RowsBatch) mw.OnMessageC
 	}
 }
 
-func aggregateRows(batch RowsBatch, config *Config) ([][]interface{}, error) {
+func aggregateRows(batch ic.RowsBatch, config *Config) ([][]interface{}, error) {
 
 	groupByIndexes := getGroupByColIndexes(config, batch)
 
@@ -161,7 +155,7 @@ func getAggregatedRowsFromGroupedData(groupedData map[string][]a.Aggregation) []
 	return result
 }
 
-func getAggColIndexes(config *Config, batch RowsBatch) map[string]int {
+func getAggColIndexes(config *Config, batch ic.RowsBatch) map[string]int {
 	var aggColIndexes map[string]int = make(map[string]int)
 	for _, agg := range config.Aggregations {
 		for i, colName := range batch.ColumnNames {
@@ -174,7 +168,7 @@ func getAggColIndexes(config *Config, batch RowsBatch) map[string]int {
 	return aggColIndexes
 }
 
-func getGroupByColIndexes(config *Config, batch RowsBatch) []int {
+func getGroupByColIndexes(config *Config, batch ic.RowsBatch) []int {
 	var groupByIndexes []int
 	for _, groupByCol := range config.GroupBy {
 		for i, colName := range batch.ColumnNames {
@@ -207,7 +201,7 @@ func joinParts(keyParts []string, separator string) string {
 	return key
 }
 
-func getBatchFromAggregatedRows(config *Config, aggregatedRows [][]interface{}) RowsBatch {
+func getBatchFromAggregatedRows(config *Config, aggregatedRows [][]interface{}) ic.RowsBatch {
 	var aggregatedColumnNames []string
 
 	groupedColName := joinParts(config.GroupBy, "-")
@@ -218,7 +212,7 @@ func getBatchFromAggregatedRows(config *Config, aggregatedRows [][]interface{}) 
 		aggregatedColumnNames = append(aggregatedColumnNames, aggColName)
 	}
 
-	return RowsBatch{
+	return ic.RowsBatch{
 		ColumnNames: aggregatedColumnNames,
 		Rows:        aggregatedRows,
 	}
