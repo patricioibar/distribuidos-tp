@@ -27,18 +27,7 @@ type RowsBatch struct {
 	Rows        [][]interface{} `json:"rows"`
 }
 
-func NewAggregatorWorker(config *Config) *AggregatorWorker {
-	var input mw.MessageMiddleware
-	var output mw.MessageMiddleware
-
-	input, err := mw.NewConsumer(config.InputName)
-	if err != nil {
-		log.Fatalf("Failed to create input consumer: %v", err)
-	}
-	output, err = mw.NewProducer(config.OutputName)
-	if err != nil {
-		log.Fatalf("Failed to create output producer: %v", err)
-	}
+func NewAggregatorWorker(config *Config, input mw.MessageMiddleware, output mw.MessageMiddleware) *AggregatorWorker {
 
 	batchChan := make(chan RowsBatch, 100)
 	onMessage := onMessageFromConfig(config, batchChan)

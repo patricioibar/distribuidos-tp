@@ -6,6 +6,8 @@ import (
 	"aggregator/common"
 
 	"github.com/op/go-logging"
+
+	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
 var log = logging.MustGetLogger("log")
@@ -42,6 +44,18 @@ func main() {
 		log.Criticalf("%s", err)
 	}
 
-	aggregator := common.NewAggregatorWorker(config)
+	var input mw.MessageMiddleware
+	var output mw.MessageMiddleware
+
+	input, err = mw.NewConsumer(config.InputName)
+	if err != nil {
+		log.Fatalf("Failed to create input consumer: %v", err)
+	}
+	output, err = mw.NewProducer(config.OutputName)
+	if err != nil {
+		log.Fatalf("Failed to create output producer: %v", err)
+	}
+
+	aggregator := common.NewAggregatorWorker(config, input, output)
 	aggregator.Start()
 }
