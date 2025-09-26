@@ -5,4 +5,5 @@ use (
 	./coffee-analyzer
 	./communication
 	./middleware
+	./aggregator
 )

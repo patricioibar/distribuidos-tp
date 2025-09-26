@@ -9,6 +9,8 @@ import (
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
+const maxBatchBufferSize = 100
+
 var log = logging.MustGetLogger("log")
 
 type AggregatorWorker struct {
@@ -28,8 +30,7 @@ type RowsBatch struct {
 }
 
 func NewAggregatorWorker(config *Config, input mw.MessageMiddleware, output mw.MessageMiddleware) *AggregatorWorker {
-
-	batchChan := make(chan RowsBatch, 100)
+	batchChan := make(chan RowsBatch, maxBatchBufferSize)
 	onMessage := onMessageFromConfig(config, batchChan)
 
 	return &AggregatorWorker{
@@ -72,6 +73,7 @@ func (a *AggregatorWorker) Close() {
 	if err := a.output.StopConsuming(); err != nil {
 		log.Errorf("Failed to stop producing messages: %v", err)
 	}
+	close(a.closeChan)
 }
 
 func onMessageFromConfig(config *Config, batchChan chan RowsBatch) mw.OnMessageCallback {
@@ -191,18 +193,28 @@ func getGroupByKey(groupByIndexes []int, row []interface{}) string {
 		stringKey := fmt.Sprintf("%v", row[idx])
 		keyParts = append(keyParts, stringKey)
 	}
-	key := fmt.Sprintf("%v", keyParts)
+	return joinParts(keyParts, "-")
+}
+
+func joinParts(keyParts []string, separator string) string {
+	key := ""
+	if len(keyParts) > 0 {
+		key = keyParts[0]
+		for i := 1; i < len(keyParts); i++ {
+			key += separator + keyParts[i]
+		}
+	}
 	return key
 }
 
 func getBatchFromAggregatedRows(config *Config, aggregatedRows [][]interface{}) RowsBatch {
 	var aggregatedColumnNames []string
 
-	groupedColName := fmt.Sprintf("%v", config.GroupBy)
+	groupedColName := joinParts(config.GroupBy, "-")
 	aggregatedColumnNames = append(aggregatedColumnNames, groupedColName)
 
 	for _, agg := range config.Aggregations {
-		aggColName := fmt.Sprintf("%s_%s", agg.Col, agg.Func)
+		aggColName := joinParts([]string{agg.Func, agg.Col}, "_")
 		aggregatedColumnNames = append(aggregatedColumnNames, aggColName)
 	}
 

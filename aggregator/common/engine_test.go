@@ -1,0 +1,208 @@
+package common_test
+
+import (
+	"aggregator/common"
+	"encoding/json"
+	"testing"
+
+	mw "github.com/patricioibar/distribuidos-tp/middleware"
+)
+
+type StubProducer struct {
+	sentMessages [][]byte
+	newMessage   chan struct{}
+}
+
+func newStubProducer() *StubProducer {
+	return &StubProducer{sentMessages: make([][]byte, 0), newMessage: make(chan struct{}, 10)}
+}
+
+func (s *StubProducer) waitForAMessage() {
+	<-s.newMessage
+}
+
+func (s *StubProducer) Send(message []byte) (error *mw.MessageMiddlewareError) {
+	s.sentMessages = append(s.sentMessages, message)
+	s.newMessage <- struct{}{}
+	return nil
+}
+
+func (s *StubProducer) StartConsuming(onMessageCallback mw.OnMessageCallback) (error *mw.MessageMiddlewareError) {
+	return nil
+}
+
+func (s *StubProducer) StopConsuming() (error *mw.MessageMiddlewareError) { return nil }
+
+func (s *StubProducer) Close() (error *mw.MessageMiddlewareError) { return nil }
+
+func (s *StubProducer) Delete() (error *mw.MessageMiddlewareError) { return nil }
+
+type StubConsumer struct {
+	onMessage mw.OnMessageCallback
+	started   chan struct{}
+}
+
+func newStubConsumer() *StubConsumer {
+	return &StubConsumer{started: make(chan struct{}, 10)}
+}
+
+func (s *StubConsumer) waitForStart() {
+	<-s.started
+}
+
+func (s *StubConsumer) StartConsuming(onMessageCallback mw.OnMessageCallback) (error *mw.MessageMiddlewareError) {
+	s.onMessage = onMessageCallback
+	s.started <- struct{}{}
+	return nil
+}
+
+func (s *StubConsumer) InjectMessage(message []byte, doneChan chan *mw.MessageMiddlewareError) {
+	s.onMessage(mw.MiddlewareMessage{Body: message}, doneChan)
+}
+
+func (s *StubConsumer) SimulateMessage(message []byte) {
+	doneChan := make(chan *mw.MessageMiddlewareError)
+	go func() { <-doneChan }()
+	s.InjectMessage(message, doneChan)
+}
+
+func (s *StubConsumer) StopConsuming() (error *mw.MessageMiddlewareError) { return nil }
+
+func (s *StubConsumer) Send(message []byte) (error *mw.MessageMiddlewareError) { return nil }
+
+func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
+
+func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
+
+func TestSumAggregatorWorker(t *testing.T) {
+	input := newStubConsumer()
+	output := newStubProducer()
+	config := &common.Config{
+		GroupBy:      []string{"category"},
+		Aggregations: []common.AggConfig{{Col: "value", Func: "sum"}},
+	}
+	worker := common.NewAggregatorWorker(config, input, output)
+
+	go worker.Start()
+
+	input.waitForStart()
+	input.SimulateMessage([]byte(`{"column_names":["category","value"],"rows":[["A",10],["B",20],["A",30]]}`))
+	output.waitForAMessage()
+
+	if len(output.sentMessages) != 1 {
+		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
+	}
+
+	var outputBatch common.RowsBatch
+	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %v", err)
+	}
+
+	expectedRows := map[string]float64{"A": 40.0, "B": 20.0}
+	if len(outputBatch.Rows) != len(expectedRows) {
+		t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
+	}
+
+	for _, row := range outputBatch.Rows {
+		category := row[0].(string)
+		sum := row[1].(float64)
+		expectedSum, exists := expectedRows[category]
+		if !exists {
+			t.Fatalf("Unexpected category %s in output", category)
+		}
+		if sum != expectedSum {
+			t.Fatalf("Expected sum for category %s to be %v, got %v", category, expectedSum, sum)
+		}
+		delete(expectedRows, category)
+	}
+}
+
+func TestCountAggregatorWorker(t *testing.T) {
+	input := newStubConsumer()
+	output := newStubProducer()
+	config := &common.Config{
+		GroupBy:      []string{"category"},
+		Aggregations: []common.AggConfig{{Col: "value", Func: "count"}},
+	}
+	worker := common.NewAggregatorWorker(config, input, output)
+	go worker.Start()
+	input.waitForStart()
+	input.SimulateMessage([]byte(`{"column_names":["category","value"],"rows":[["A",10],["B",20],["A",30]]}`))
+	output.waitForAMessage()
+	if len(output.sentMessages) != 1 {
+		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
+	}
+
+	var outputBatch common.RowsBatch
+	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %v", err)
+	}
+
+	expectedRows := map[string]int{"A": 2, "B": 1}
+	if len(outputBatch.Rows) != len(expectedRows) {
+		t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
+	}
+
+	for _, row := range outputBatch.Rows {
+		category := row[0].(string)
+		count := int(row[1].(float64)) // JSON numbers are always float64
+		expectedCount, exists := expectedRows[category]
+		if !exists {
+			t.Fatalf("Unexpected category %s in output", category)
+		}
+		if count != expectedCount {
+			t.Fatalf("Expected count for category %s to be %d, got %d", category, expectedCount, count)
+		}
+		delete(expectedRows, category)
+	}
+}
+
+func TestMultipleAggregationsWorker(t *testing.T) {
+	input := newStubConsumer()
+	output := newStubProducer()
+	config := &common.Config{
+		GroupBy: []string{"category"},
+		Aggregations: []common.AggConfig{
+			{Col: "value", Func: "sum"},
+			{Col: "value", Func: "count"},
+		},
+	}
+	worker := common.NewAggregatorWorker(config, input, output)
+	go worker.Start()
+	input.waitForStart()
+	input.SimulateMessage([]byte(`{"column_names":["category","value"],"rows":[["A",10],["B",20],["B",30]]}`))
+	output.waitForAMessage()
+
+	if len(output.sentMessages) != 1 {
+		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
+	}
+	var outputBatch common.RowsBatch
+	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %v", err)
+	}
+	expectedRows := map[string]struct {
+		sum   float64
+		count int
+	}{
+		"A": {sum: 10, count: 1},
+		"B": {sum: 50, count: 2},
+	}
+	if len(outputBatch.Rows) != len(expectedRows) {
+		t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
+	}
+	for _, row := range outputBatch.Rows {
+		category := row[0].(string)
+		sum := row[1].(float64)
+		count := int(row[2].(float64))
+		expected := expectedRows[category]
+		if sum != expected.sum {
+			t.Fatalf("Expected sum for category %s to be %v, got %v", category, expected.sum, sum)
+		}
+		if count != expected.count {
+			t.Fatalf("Expected count for category %s to be %d, got %d", category, expected.count, count)
+		}
+	}
+}
