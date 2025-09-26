@@ -1,3 +1,3 @@
-module inner-communication
+module innercommunication
 
 go 1.25.1
