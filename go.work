@@ -1,9 +1,9 @@
 go 1.25.1
 
 use (
+	./aggregator
 	./analyst
 	./coffee-analyzer
 	./communication
 	./middleware
-	./aggregator
 )

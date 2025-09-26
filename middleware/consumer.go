@@ -15,6 +15,7 @@ type Consumer struct {
 	done chan struct{} // para esperar a que termine el goroutine
 
 	startOnce sync.Once
+	closeOnce sync.Once
 }
 
 func NewConsumer(name string) (*Consumer, error) {
@@ -39,7 +40,7 @@ func NewConsumer(name string) (*Consumer, error) {
 	err = ch.ExchangeDeclare(
 		name,
 		"fanout", // type
-		true,     // durable
+		false,    // durable
 		false,    // auto-delete
 		false,    // internal
 		false,    // no-wait
@@ -64,7 +65,7 @@ func NewConsumer(name string) (*Consumer, error) {
 	}
 
 	return &Consumer{
-		name:    name,
+		name:    q.Name,
 		channel: ch,
 		quit:    make(chan struct{}),
 		done:    make(chan struct{}),
@@ -126,8 +127,10 @@ func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageM
 
 func (c *Consumer) StopConsuming() *MessageMiddlewareError {
 
-	close(c.quit) // señal al goroutine que pare
-	<-c.done      // esperar a que termine
+	c.closeOnce.Do(func() {
+		close(c.quit) // señal al goroutine que pare
+	})
+	<-c.done // esperar a que termine
 
 	return nil
 }
