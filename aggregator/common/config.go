@@ -21,25 +21,27 @@ type Config struct {
 	MiddlewareAddress string      `json:"middleware-address"`
 	GroupBy           []string    `json:"group-by"`
 	Aggregations      []AggConfig `json:"aggregations"`
+	QueryName         string      `json:"query-name"`
 	InputName         string      `json:"input-name"`
 	OutputName        string      `json:"output-name"`
 	LogLevel          string      `json:"log-level"`
+}
+
+var requiredFields = []string{
+	"agg-id",
+	"middleware-address",
+	"group-by",
+	"aggregations",
+	"query-name",
+	"input-name",
+	"output-name",
+	"log-level",
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.
 // Environment variables take precedence over the config file.
 func InitConfig() (*Config, error) {
 	v := viper.New()
-
-	requiredFields := []string{
-		"agg-id",
-		"middleware-address",
-		"group-by",
-		"aggregations",
-		"input-name",
-		"output-name",
-		"log-level",
-	}
 
 	// Set config file type and name
 	v.SetConfigFile(configFilePath)

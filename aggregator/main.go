@@ -47,11 +47,12 @@ func main() {
 	var input mw.MessageMiddleware
 	var output mw.MessageMiddleware
 
-	input, err = mw.NewConsumer(config.InputName)
+	consumerName := config.InputName + config.QueryName
+	input, err = mw.NewConsumer(consumerName, config.InputName, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create input consumer: %v", err)
 	}
-	output, err = mw.NewProducer(config.OutputName)
+	output, err = mw.NewProducer(config.OutputName, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create output producer: %v", err)
 	}
