@@ -18,19 +18,19 @@ type Consumer struct {
 	closeOnce sync.Once
 }
 
-func NewConsumer(name string) (*Consumer, error) {
-	ch, err := GetConnection("amqp://guest:guest@localhost:5672/").Channel()
+func NewConsumer(consumerName string, sourceName string, connectionAddr string) (*Consumer, error) {
+	ch, err := GetConnection(connectionAddr).Channel()
 	if err != nil {
 		return nil, err
 	}
 
 	q, err := ch.QueueDeclare(
-		"",    // name
-		false, // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
+		consumerName, // name
+		false,        // durable
+		false,        // delete when unused
+		false,        // exclusive
+		false,        // no-wait
+		nil,          // arguments
 	)
 	if err != nil {
 		_ = ch.Close()
@@ -38,7 +38,7 @@ func NewConsumer(name string) (*Consumer, error) {
 	}
 
 	err = ch.ExchangeDeclare(
-		name,
+		sourceName,
 		"fanout", // type
 		false,    // durable
 		false,    // auto-delete
@@ -52,9 +52,9 @@ func NewConsumer(name string) (*Consumer, error) {
 	}
 
 	err = ch.QueueBind(
-		q.Name, // queue name
-		"",     // routing key — ignored for fanout
-		name,   // exchange name
+		q.Name,     // queue name
+		"",         // routing key — ignored for fanout
+		sourceName, // exchange name
 		false,
 		nil,
 	)

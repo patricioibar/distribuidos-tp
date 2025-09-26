@@ -9,8 +9,8 @@ type Producer struct {
 	channel *amqp.Channel
 }
 
-func NewProducer(name string) (*Producer, error) {
-	ch, err := GetConnection("amqp://guest:guest@localhost:5672/").Channel()
+func NewProducer(name string, connectionAddr string) (*Producer, error) {
+	ch, err := GetConnection(connectionAddr).Channel()
 
 	if err != nil {
 		return nil, err
