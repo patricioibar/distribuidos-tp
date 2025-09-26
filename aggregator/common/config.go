@@ -7,24 +7,24 @@ import (
 	"github.com/spf13/viper"
 )
 
-const configFilePath = "./config.json"
+const configFilePath = "config.json"
 
 // AggConfig represents a single aggregation configuration.
 type AggConfig struct {
-	Col  string `json:"col"`
-	Func string `json:"func"`
+	Col  string `json:"col" mapstructure:"col"`
+	Func string `json:"func" mapstructure:"func"`
 }
 
 // Config represents the application's configuration structure.
 type Config struct {
-	AggId             string      `json:"agg-id"`
-	MiddlewareAddress string      `json:"middleware-address"`
-	GroupBy           []string    `json:"group-by"`
-	Aggregations      []AggConfig `json:"aggregations"`
-	QueryName         string      `json:"query-name"`
-	InputName         string      `json:"input-name"`
-	OutputName        string      `json:"output-name"`
-	LogLevel          string      `json:"log-level"`
+	AggId             string      `json:"agg-id" mapstructure:"agg-id"`
+	MiddlewareAddress string      `json:"middleware-address" mapstructure:"middleware-address"`
+	GroupBy           []string    `json:"group-by" mapstructure:"group-by"`
+	Aggregations      []AggConfig `json:"aggregations" mapstructure:"aggregations"`
+	QueryName         string      `json:"query-name" mapstructure:"query-name"`
+	InputName         string      `json:"input-name" mapstructure:"input-name"`
+	OutputName        string      `json:"output-name" mapstructure:"output-name"`
+	LogLevel          string      `json:"log-level" mapstructure:"log-level"`
 }
 
 var requiredFields = []string{
@@ -54,7 +54,9 @@ func InitConfig() (*Config, error) {
 		v.BindEnv(field)
 	}
 
-	v.ReadInConfig() // ignore error, we are not using config file strictly
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("could not read config: %w", err)
+	}
 
 	for _, field := range requiredFields {
 		if !v.IsSet(field) {

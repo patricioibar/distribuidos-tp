@@ -36,6 +36,7 @@ func InitLogger(logLevel string) error {
 
 func main() {
 	config, err := common.InitConfig()
+	log.Infof("Loaded config: %+v", config)
 	if err != nil {
 		log.Criticalf("%s", err)
 	}
