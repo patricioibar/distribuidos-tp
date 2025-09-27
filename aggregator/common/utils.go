@@ -7,16 +7,16 @@ import (
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 )
 
-func getAggregatedRowsFromGroupedData(groupedData map[string][]a.Aggregation) [][]interface{} {
+func getAggregatedRowsFromGroupedData(groupedData *map[string][]a.Aggregation) *[][]interface{} {
 	var result [][]interface{}
-	for key, aggs := range groupedData {
+	for key, aggs := range *groupedData {
 		row := []interface{}{key}
 		for _, agg := range aggs {
 			row = append(row, agg.Result())
 		}
 		result = append(result, row)
 	}
-	return result
+	return &result
 }
 
 func getAggColIndexes(config *Config, batch *ic.RowsBatch) map[string]int {
@@ -65,7 +65,7 @@ func joinParts(keyParts []string, separator string) string {
 	return key
 }
 
-func getBatchFromAggregatedRows(config *Config, aggregatedRows [][]interface{}) ic.RowsBatch {
+func getBatchFromAggregatedRows(config *Config, aggregatedRows *[][]interface{}) *ic.RowsBatch {
 	var aggregatedColumnNames []string
 
 	groupedColName := joinParts(config.GroupBy, "-")
@@ -76,8 +76,8 @@ func getBatchFromAggregatedRows(config *Config, aggregatedRows [][]interface{}) 
 		aggregatedColumnNames = append(aggregatedColumnNames, aggColName)
 	}
 
-	return ic.RowsBatch{
+	return &ic.RowsBatch{
 		ColumnNames: aggregatedColumnNames,
-		Rows:        aggregatedRows,
+		Rows:        *aggregatedRows,
 	}
 }

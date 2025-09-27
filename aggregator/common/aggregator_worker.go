@@ -97,12 +97,12 @@ func aggregatorMessageCallback(config *Config, batchChan chan ic.RowsBatch) mw.O
 
 		aggregatedBatch := getBatchFromAggregatedRows(config, aggregatedRows)
 
-		batchChan <- aggregatedBatch
+		batchChan <- *aggregatedBatch
 		done <- nil
 	}
 }
 
-func aggregateRows(batch *ic.RowsBatch, config *Config) ([][]interface{}, error) {
+func aggregateRows(batch *ic.RowsBatch, config *Config) (*[][]interface{}, error) {
 
 	groupByIndexes := getGroupByColIndexes(config, batch)
 
@@ -132,7 +132,7 @@ func aggregateRows(batch *ic.RowsBatch, config *Config) ([][]interface{}, error)
 		}
 	}
 
-	result := getAggregatedRowsFromGroupedData(groupedData)
+	result := getAggregatedRowsFromGroupedData(&groupedData)
 
 	return result, nil
 }
