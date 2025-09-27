@@ -2,7 +2,6 @@ package filterbyyear
 
 import (
 	"encoding/json"
-	"log"
 
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
@@ -21,24 +20,16 @@ type FilterWorker struct {
 
 func NewFilterByYear(input mw.MessageMiddleware, output mw.MessageMiddleware) *FilterWorker {
 	batchChan := make(chan ic.RowsBatch, maxBatchBufferSize)
-
 	filterByYear := getFilterFunction(batchChan)
-
-
 
 	return &FilterWorker{
 		input:        input,
 		output:       output,
 		filterFunction: filterByYear,
 		batchChan:   batchChan,
-		closeChan:   make(chan struct{}, 1),
+		closeChan:   make(chan struct{}),
 	}
 }
-
-
-
-
-
 
 
 func getFilterFunction(batchChan chan ic.RowsBatch) mw.OnMessageCallback {
@@ -65,12 +56,26 @@ func (f *FilterWorker) Start() {
 			case batch := <-f.batchChan:
 				data, err := json.Marshal(batch)
 				if err != nil {
-					log.Printf("Failed to marshal batch: %v", err)
+					log.Errorf("Failed to marshal batch: %v", err)
 					continue
 				}
 				if err := f.output.Send(data); err != nil {
-					log.Printf("Failed to send message: %v", err)
+					log.Errorf("Failed to send message: %v", err)
 				}
 		}
 	}
+}
+
+
+
+func (f *FilterWorker) Close() {
+	if err := f.input.StopConsuming(); err != nil {
+		log.Errorf("Failed to stop consuming messages: %v", err)
+	}
+	if err := f.output.StopConsuming(); err != nil {
+		log.Errorf("Failed to stop producing messages: %v", err)
+	}
+
+	close(f.closeChan)
+
 }

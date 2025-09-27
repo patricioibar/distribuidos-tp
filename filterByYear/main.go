@@ -1,13 +1,12 @@
 package filterbyyear
 
 import (
-	"log"
-
+	"github.com/op/go-logging"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
 
-
+var log = logging.MustGetLogger("log")
 
 func main() {
 
