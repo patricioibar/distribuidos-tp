@@ -68,7 +68,6 @@ func (reducer *ReducerWorker) reducerMessageCallback() mw.OnMessageCallback {
 
 		if batch.IsEndSignal() {
 			reducer.SendReducedData()
-			return
 		}
 	}
 }
@@ -103,5 +102,38 @@ func (r *ReducerWorker) reduceBatch(batch *ic.RowsBatch) {
 }
 
 func (r *ReducerWorker) SendReducedData() {
-	panic("unimplemented")
+	batchSize := r.Config.BatchSize
+
+	reducedDataBatch := make(map[string][]a.Aggregation)
+	i := 0
+	for key, aggs := range r.reducedData {
+		if i >= batchSize {
+			r.sendReducedDataBatch(reducedDataBatch)
+
+			reducedDataBatch = make(map[string][]a.Aggregation)
+			i = 0
+		}
+
+		reducedDataBatch[key] = aggs
+		i++
+	}
+
+	if len(reducedDataBatch) > 0 {
+		r.sendReducedDataBatch(reducedDataBatch)
+
+	}
+
+}
+
+func (r *ReducerWorker) sendReducedDataBatch(groupedData map[string][]a.Aggregation) {
+	rows := getAggregatedRowsFromGroupedData(&groupedData)
+	batch := getBatchFromAggregatedRows(r.Config, rows)
+
+	data, err := batch.String()
+	if err != nil {
+		log.Errorf("Failed to marshal batch: %v", err)
+	}
+	if err := r.output.Send([]byte(data)); err != nil {
+		log.Errorf("Failed to send message: %v", err)
+	}
 }

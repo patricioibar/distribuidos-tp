@@ -17,7 +17,8 @@ type AggConfig struct {
 
 // Config represents the application's configuration structure.
 type Config struct {
-	AggId             string      `json:"agg-id" mapstructure:"agg-id"`
+	WorkerId          string      `json:"worker-id" mapstructure:"worker-id"`
+	IsReducer         bool        `json:"is_reducer" mapstructure:"is_reducer"`
 	MiddlewareAddress string      `json:"middleware-address" mapstructure:"middleware-address"`
 	GroupBy           []string    `json:"group-by" mapstructure:"group-by"`
 	Aggregations      []AggConfig `json:"aggregations" mapstructure:"aggregations"`
@@ -25,17 +26,24 @@ type Config struct {
 	InputName         string      `json:"input-name" mapstructure:"input-name"`
 	OutputName        string      `json:"output-name" mapstructure:"output-name"`
 	LogLevel          string      `json:"log-level" mapstructure:"log-level"`
+	BatchSize         int         `json:"reducer-batch-size" mapstructure:"reducer-batch-size"`
 }
 
 var requiredFields = []string{
-	"agg-id",
+	"worker-id",
+	"is_reducer",
 	"middleware-address",
 	"group-by",
 	"aggregations",
 	"query-name",
 	"input-name",
 	"output-name",
-	"log-level",
+}
+
+// field: default value
+var optionalFields = map[string]interface{}{
+	"log-level":          "INFO",
+	"reducer-batch-size": 100,
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.
@@ -67,6 +75,13 @@ func InitConfig() (*Config, error) {
 	var config Config
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("could not unmarshal config: %w", err)
+	}
+
+	// Set defaults for optional fields if not set
+	for optField, defaultValue := range optionalFields {
+		if !v.IsSet(optField) {
+			v.Set(optField, defaultValue)
+		}
 	}
 
 	return &config, nil
