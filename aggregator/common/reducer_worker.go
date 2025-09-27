@@ -62,16 +62,14 @@ func (reducer *ReducerWorker) reducerMessageCallback() mw.OnMessageCallback {
 			return
 		}
 
+		if len(batch.Rows) != 0 {
+			reducer.reduceBatch(batch)
+		}
+
 		if batch.IsEndSignal() {
 			reducer.SendReducedData()
 			return
 		}
-
-		if len(batch.Rows) == 0 {
-			return
-		}
-
-		reducer.reduceBatch(batch)
 	}
 }
 
