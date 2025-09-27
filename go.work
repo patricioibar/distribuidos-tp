@@ -7,4 +7,5 @@ use (
 	./communication
 	./innercommunication
 	./middleware
+	./filter
 )
