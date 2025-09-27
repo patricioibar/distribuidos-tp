@@ -133,6 +133,15 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		return ic.RowsBatch{}, errors.New("year column not found")
 	}
 
+	monthsOfFirstSemester := map[time.Month]bool{
+		time.January:   true,
+		time.February:  true,
+		time.March:     true,
+		time.April:     true,
+		time.May:       true,
+		time.June:      true,
+	}
+
 	for _, row := range batch.Rows {
 		if len(row) <= indexYear {
 			return ic.RowsBatch{}, errors.New("row does not have enough columns")
@@ -148,12 +157,18 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		}
 		
 		if timestamp.Year() == 2024 || timestamp.Year() == 2025 {
+			if monthsOfFirstSemester[timestamp.Month()] {
+				row = append(row, "FirstSemester")
+			} else {
+				row = append(row, "SecondSemester")
+			}
 			filteredRows = append(filteredRows, row)
 		}
 	}
+	batch.ColumnNames = append(batch.ColumnNames, "semester")
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		JobDone:   batch.JobDone,
+		JobDone:     batch.JobDone,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
