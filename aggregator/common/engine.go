@@ -2,7 +2,6 @@ package common
 
 import (
 	a "aggregator/common/aggFunctions"
-	"encoding/json"
 	"fmt"
 
 	"github.com/op/go-logging"
@@ -48,12 +47,12 @@ func (a *AggregatorWorker) Start() {
 		case <-a.closeChan:
 			return
 		case batch := <-a.batchChan:
-			data, err := json.Marshal(batch)
+			data, err := batch.String()
 			if err != nil {
 				log.Errorf("Failed to marshal batch: %v", err)
 				continue
 			}
-			if err := a.output.Send(data); err != nil {
+			if err := a.output.Send([]byte(data)); err != nil {
 				log.Errorf("Failed to send message: %v", err)
 			}
 		}
@@ -74,8 +73,8 @@ func onMessageFromConfig(config *Config, batchChan chan ic.RowsBatch) mw.OnMessa
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 
 		jsonStr := string(consumeChannel.Body)
-		var batch ic.RowsBatch
-		if err := json.Unmarshal([]byte(jsonStr), &batch); err != nil {
+		batch, err := ic.RowsBatchFromString(jsonStr)
+		if err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
 			// no mando un error por el chan acá,
 			// porque si lo mando el mensaje se reencola y puede que
@@ -93,10 +92,7 @@ func onMessageFromConfig(config *Config, batchChan chan ic.RowsBatch) mw.OnMessa
 
 		if err != nil {
 			log.Errorf("Failed to aggregate rows: %v", err)
-			done <- &mw.MessageMiddlewareError{
-				Code: mw.MessageMiddlewareMessageError,
-				Msg:  "Failed to aggregate rows: " + err.Error(),
-			}
+			done <- nil
 			return
 		}
 
@@ -107,7 +103,7 @@ func onMessageFromConfig(config *Config, batchChan chan ic.RowsBatch) mw.OnMessa
 	}
 }
 
-func aggregateRows(batch ic.RowsBatch, config *Config) ([][]interface{}, error) {
+func aggregateRows(batch *ic.RowsBatch, config *Config) ([][]interface{}, error) {
 
 	groupByIndexes := getGroupByColIndexes(config, batch)
 
@@ -117,10 +113,9 @@ func aggregateRows(batch ic.RowsBatch, config *Config) ([][]interface{}, error) 
 	groupedData := make(map[string][]a.Aggregation)
 	for _, row := range batch.Rows {
 		if len(row) != len(batch.ColumnNames) {
-			return nil, &mw.MessageMiddlewareError{
-				Code: mw.MessageMiddlewareMessageError,
-				Msg:  "Row length does not match column names length ",
-			}
+			// ignore row
+			log.Warningf("Row length %d does not match column names length %d, ignoring row", len(row), len(batch.ColumnNames))
+			continue
 		}
 
 		key := getGroupByKey(groupByIndexes, row)
@@ -155,7 +150,7 @@ func getAggregatedRowsFromGroupedData(groupedData map[string][]a.Aggregation) []
 	return result
 }
 
-func getAggColIndexes(config *Config, batch ic.RowsBatch) map[string]int {
+func getAggColIndexes(config *Config, batch *ic.RowsBatch) map[string]int {
 	var aggColIndexes map[string]int = make(map[string]int)
 	for _, agg := range config.Aggregations {
 		for i, colName := range batch.ColumnNames {
@@ -168,7 +163,7 @@ func getAggColIndexes(config *Config, batch ic.RowsBatch) map[string]int {
 	return aggColIndexes
 }
 
-func getGroupByColIndexes(config *Config, batch ic.RowsBatch) []int {
+func getGroupByColIndexes(config *Config, batch *ic.RowsBatch) []int {
 	var groupByIndexes []int
 	for _, groupByCol := range config.GroupBy {
 		for i, colName := range batch.ColumnNames {
