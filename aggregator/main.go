@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/signal"
 
 	"aggregator/common"
 
@@ -59,5 +60,14 @@ func main() {
 	}
 
 	aggregator := common.NewAggregatorWorker(config, input, output)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+	go func() {
+		<-sigChan
+		log.Infof("Received SIGINT, shutting down aggregator...")
+		aggregator.Close()
+	}()
+
 	aggregator.Start()
 }

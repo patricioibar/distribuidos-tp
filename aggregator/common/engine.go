@@ -60,11 +60,11 @@ func (a *AggregatorWorker) Start() {
 }
 
 func (a *AggregatorWorker) Close() {
-	if err := a.input.StopConsuming(); err != nil {
-		log.Errorf("Failed to stop consuming messages: %v", err)
+	if err := a.input.Close(); err != nil {
+		log.Errorf("Failed to close input: %v", err)
 	}
-	if err := a.output.StopConsuming(); err != nil {
-		log.Errorf("Failed to stop producing messages: %v", err)
+	if err := a.output.Close(); err != nil {
+		log.Errorf("Failed to close output: %v", err)
 	}
 	close(a.closeChan)
 }
