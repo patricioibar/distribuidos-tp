@@ -3,7 +3,6 @@ package filter
 import (
 	"encoding/json"
 	"errors"
-	"time"
 
 	"github.com/op/go-logging"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -41,42 +40,49 @@ func NewFilter(input mw.MessageMiddleware, output mw.MessageMiddleware, filterTy
 
 
 func getFilterFunction(batchChan chan ic.RowsBatch, filterType string) (mw.OnMessageCallback, error) {
+	var filterFunction func(ic.RowsBatch) (ic.RowsBatch, error);
 	switch filterType {
-	case "byYear":
-		return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-			// funcion de filtrado
-
-			jsonData := string(consumeChannel.Body)
-			var batch ic.RowsBatch
-			if err := json.Unmarshal([]byte(jsonData), &batch); err != nil {
-				log.Errorf("Failed to unmarshal message: %v", err)
-				done <- nil
-				return
-			}
-
-			if len(batch.Rows) == 0 {
-				log.Warning("Received empty batch")
-				done <- nil
-				return
-			}
-
-			filteredBatch, err := filterRowsByYear(batch)
-
-			if err != nil {
-				log.Errorf("Failed to filter rows by year: %v", err)
-				done <- &mw.MessageMiddlewareError{
-					Code: mw.MessageMiddlewareMessageError,
-					Msg: "Failed to aggregate rows: " + err.Error(),
-				}
-				return
-			}
-
-			batchChan <- filteredBatch
-			done <- nil
-		}, nil
+	case "TbyYear":
+		filterFunction = filterRowsByYear
+	case "TbyHour":
+		filterFunction = filterRowsByHour
+	case "TbyAmount":
+		filterFunction = filterRowsByTransactionAmount
+	case "TIbyYear":
+		filterFunction = filterTransactionItemsByYear
 	default:
 		return nil, errors.New("unknown filter type")
 	}
+
+	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		jsonData := string(consumeChannel.Body)
+		var batch ic.RowsBatch
+		if err := json.Unmarshal([]byte(jsonData), &batch); err != nil {
+			log.Errorf("Failed to unmarshal message: %v", err)
+			done <- nil
+			return
+		}
+
+		if len(batch.Rows) == 0 {
+			log.Warning("Received empty batch")
+			done <- nil
+			return
+		}
+
+		filteredBatch, err := filterFunction(batch)
+
+		if err != nil {
+			log.Errorf("Failed to filter rows by year: %v", err)
+			done <- &mw.MessageMiddlewareError{
+				Code: mw.MessageMiddlewareMessageError,
+				Msg: "Failed to aggregate rows: " + err.Error(),
+			}
+			return
+		}
+
+		batchChan <- filteredBatch
+		done <- nil
+	}, nil
 }
 
 
@@ -115,66 +121,4 @@ func (f *FilterWorker) Close() {
 
 	close(f.closeChan)
 
-}
-
-
-func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
-	var filteredRows [][]interface{}
-
-	indexYear := -1 
-	for i, header := range batch.ColumnNames {
-		if header == "year" {
-			indexYear = i
-			break
-		}
-	}
-
-	if indexYear == -1 {
-		return ic.RowsBatch{}, errors.New("year column not found")
-	}
-
-	monthsOfFirstSemester := map[time.Month]bool{
-		time.January:   true,
-		time.February:  true,
-		time.March:     true,
-		time.April:     true,
-		time.May:       true,
-		time.June:      true,
-	}
-
-	for _, row := range batch.Rows {
-		if len(row) <= indexYear {
-			return ic.RowsBatch{}, errors.New("row does not have enough columns")
-		}
-
-		tsVal, ok := row[indexYear].(string)
-		if !ok {
-			return ic.RowsBatch{}, errors.New("year column is not a string")
-		}
-		timestamp, err := parseTimestamp(tsVal)
-		if err != nil {
-			return ic.RowsBatch{}, err
-		}
-		
-		if timestamp.Year() == 2024 || timestamp.Year() == 2025 {
-			if monthsOfFirstSemester[timestamp.Month()] {
-				row = append(row, "FirstSemester")
-			} else {
-				row = append(row, "SecondSemester")
-			}
-			filteredRows = append(filteredRows, row)
-		}
-	}
-	batch.ColumnNames = append(batch.ColumnNames, "semester")
-	filteredBatch := ic.RowsBatch{
-		ColumnNames: batch.ColumnNames,
-		JobDone:     batch.JobDone,
-		Rows:        filteredRows,
-	}
-	return filteredBatch, nil
-}
-
-func parseTimestamp (timestampStr string) (time.Time, error) {
-	layout := "2006-01-02 15:04:05"
-	return time.Parse(layout, timestampStr)
 }
