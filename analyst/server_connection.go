@@ -3,6 +3,8 @@ package analyst
 import (
 	"io"
 	"net"
+
+	"github.com/patricioibar/distribuidos-tp/communication"
 )
 
 type ServerConnection struct {
@@ -11,7 +13,7 @@ type ServerConnection struct {
 }
 
 func (s *ServerConnection) sendDataset(serverAddr, filePath string) {
-	socket := Socket{}
+	socket := communication.Socket{}
 
 	err := socket.Connect(serverAddr)
 	if err != nil {
@@ -50,7 +52,7 @@ func (s *ServerConnection) sendDataset(serverAddr, filePath string) {
 
 		// Wait for server ack (sequence number, uint32)
 
-		ackSeq := socket.RecvAck()
+		ackSeq, err := socket.RecvAck()
 		if ackSeq != seq {
 			//log.Fatalf("Ack sequence mismatch: got %d, expected %d", ackSeq, seq)
 			return
@@ -60,5 +62,5 @@ func (s *ServerConnection) sendDataset(serverAddr, filePath string) {
 	}
 
 	//fmt.Println("File sent successfully.")
-	//log.Fatalf("File sent successfully.")
+	//log.Infof("File sent successfully.")
 }

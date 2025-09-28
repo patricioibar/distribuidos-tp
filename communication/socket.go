@@ -1,4 +1,4 @@
-package reader
+package communication
 
 import (
 	"encoding/binary"
@@ -36,7 +36,7 @@ func (s *Socket) SendChunksCount(numChunks int) error {
 	return nil
 }
 
-func (s *Socket) SendChunk(seq int, chunkLen int, data []byte) error {
+func (s *Socket) SendChunk(seq uint32, chunkLen int, data []byte) error {
 	if s.conn == nil {
 		return net.ErrClosed
 	}
@@ -59,7 +59,7 @@ func (s *Socket) SendChunk(seq int, chunkLen int, data []byte) error {
 	return nil
 }
 
-func (s *Socket) RecvAck() (int, error) {
+func (s *Socket) RecvAck() (uint32, error) {
 	if s.conn == nil {
 		return 0, net.ErrClosed
 	}
@@ -73,7 +73,7 @@ func (s *Socket) RecvAck() (int, error) {
 		total += n
 	}
 	seq := binary.BigEndian.Uint32(buf[:])
-	return int(seq), nil
+	return seq, nil
 }
 
 // Close closes the connection and listener if present.
