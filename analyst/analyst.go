@@ -42,8 +42,11 @@ func main() {
 	}
 
 	serverConn := ServerConnection{
-		BatchSize: config.BatchSize,
+		BatchSize:             config.BatchSize,
+		CoffeeAnalyzerAddress: config.CoffeeAnalyzerAddress,
 	}
 
-	serverConn.sendDataset(config.CoffeeAnalyzerAddress, config.DatasetPath)
+	go serverConn.sendDataset("users.csv", Users)
+
+	go serverConn.sendDataset("transactions.csv", Transactions)
 }

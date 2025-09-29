@@ -3,63 +3,72 @@ package analyst
 import (
 	"encoding/json"
 	"io"
-	"net"
 
 	"github.com/patricioibar/distribuidos-tp/communication"
 )
 
 type ServerConnection struct {
-	Conn      net.Conn
-	BatchSize int
+	BatchSize             int
+	CoffeeAnalyzerAddress string
 }
 
-func (s *ServerConnection) sendDataset(serverAddr, filePath string) {
+func (s *ServerConnection) sendDataset(filePath string, fileType FileType) {
 	socket := communication.Socket{}
 
-	err := socket.Connect(serverAddr)
+	err := socket.Connect(s.CoffeeAnalyzerAddress)
 	if err != nil {
-		//log.Fatalf("Failed to connect: %v", err)
+		log.Fatalf("Failed to connect: %v", err)
 		return
 	}
 	defer socket.Close()
 
 	reader := Reader{FilePath: filePath, BatchSize: s.BatchSize}
 	batchCount := 0
-	var transactions []Transaction
+	var data interface{}
+	end := false
 
 	for {
-		err := reader.getBatch(batchCount, &transactions)
+
+		switch fileType {
+		case Transactions:
+			data = []Transaction{}
+		case TransactionItems:
+			data = []TransactionItem{}
+		case Users:
+			data = []User{}
+		case MenuItems:
+			data = []MenuItem{}
+		}
+
+		err := reader.getBatch(batchCount, &data)
 		if err != nil && err != io.EOF {
-			//log.Fatalf("Failed to read chunk %d: %v", seq, err)
+			log.Fatalf("Failed to read batch %v", err)
 			return
 		}
-		// Send chunk length (uint32) + sequence number (uint32) + chunk data
 
-		//err = socket.SendChunk(seq, len(chunk), chunk)
-		data, err := json.Marshal(transactions)
+		if err == io.EOF {
+			end = true
+		}
+
+		data, err := json.Marshal(data)
 		if err != nil {
-			//log.Fatalf("Failed to send chunk %d: %v", seq, err)
+			log.Fatalf("Failed to send batch: %v", err)
 			return
 		}
 
 		err = socket.SendBatch(data)
 		if err != nil {
-			//log.Fatalf("Failed to send chunk %d: %v", seq, err)
+			log.Fatalf("Failed to send batch: %v", err)
 			return
 		}
 
-		// Wait for server ack (sequence number, uint32)
-
-		/*ackSeq, err := socket.RecvAck()
-		if ackSeq != seq {
-			//log.Fatalf("Ack sequence mismatch: got %d, expected %d", ackSeq, seq)
-			return
-		}*/
-
-		//log.Infof("Batch %d sent successfully", seq)
+		log.Infof("Batch sent successfully")
 		batchCount += s.BatchSize
+
+		if end {
+			break
+		}
 	}
 
-	//fmt.Println("File sent successfully.")
-	//log.Infof("File sent successfully.")
+	log.Infof("File sent successfully.")
 }
