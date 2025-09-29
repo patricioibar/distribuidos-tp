@@ -42,7 +42,7 @@ func main() {
 	}
 
 	serverConn := ServerConnection{
-		ChunkSize: config.ChunkSize,
+		BatchSize: config.BatchSize,
 	}
 
 	serverConn.sendDataset(config.CoffeeAnalyzerAddress, config.DatasetPath)

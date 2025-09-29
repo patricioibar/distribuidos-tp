@@ -1,6 +1,7 @@
 package analyst
 
 import (
+	"encoding/json"
 	"io"
 	"net"
 
@@ -9,7 +10,7 @@ import (
 
 type ServerConnection struct {
 	Conn      net.Conn
-	ChunkSize int
+	BatchSize int
 }
 
 func (s *ServerConnection) sendDataset(serverAddr, filePath string) {
@@ -22,29 +23,26 @@ func (s *ServerConnection) sendDataset(serverAddr, filePath string) {
 	}
 	defer socket.Close()
 
-	reader := Reader{FilePath: filePath, ChunkSize: s.ChunkSize}
-	numChunks, err := reader.getChunksCount()
-	if err != nil {
-		//log.Fatalf("Failed to get file info: %v", err)
-		return
-	}
+	reader := Reader{FilePath: filePath, BatchSize: s.BatchSize}
+	batchCount := 0
+	var transactions []Transaction
 
-	// Send number of chunks (uint32)
-	err = socket.SendChunksCount(numChunks)
-	if err != nil {
-		//log.Fatalf("Failed to send chunks count: %v", err)
-		return
-	}
-
-	for seq := uint32(0); seq < uint32(numChunks); seq++ {
-		chunk, err := reader.getChunk(int(seq))
+	for {
+		err := reader.getBatch(batchCount, &transactions)
 		if err != nil && err != io.EOF {
 			//log.Fatalf("Failed to read chunk %d: %v", seq, err)
 			return
 		}
 		// Send chunk length (uint32) + sequence number (uint32) + chunk data
 
-		err = socket.SendChunk(seq, len(chunk), chunk)
+		//err = socket.SendChunk(seq, len(chunk), chunk)
+		data, err := json.Marshal(transactions)
+		if err != nil {
+			//log.Fatalf("Failed to send chunk %d: %v", seq, err)
+			return
+		}
+
+		err = socket.SendBatch(data)
 		if err != nil {
 			//log.Fatalf("Failed to send chunk %d: %v", seq, err)
 			return
@@ -52,13 +50,14 @@ func (s *ServerConnection) sendDataset(serverAddr, filePath string) {
 
 		// Wait for server ack (sequence number, uint32)
 
-		ackSeq, err := socket.RecvAck()
+		/*ackSeq, err := socket.RecvAck()
 		if ackSeq != seq {
 			//log.Fatalf("Ack sequence mismatch: got %d, expected %d", ackSeq, seq)
 			return
-		}
+		}*/
 
-		//log.Infof("Chunk %d sent successfully", seq)
+		//log.Infof("Batch %d sent successfully", seq)
+		batchCount += s.BatchSize
 	}
 
 	//fmt.Println("File sent successfully.")

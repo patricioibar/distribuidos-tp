@@ -11,7 +11,7 @@ const configFilePath = "config.json"
 
 // Config represents the application's configuration structure.
 type Config struct {
-	ChunkSize             int    `json:"chunk-size" mapstructure:"chunk-size"`
+	BatchSize             int    `json:"batch-size" mapstructure:"chunk-size"`
 	CoffeeAnalyzerAddress string `json:"coffee-analyzer-address" mapstructure:"coffee-analyzer-address"`
 	DatasetPath           string `json:"dataset-path" mapstructure:"dataset-path"`
 	LogLevel              string `json:"log-level" mapstructure:"log-level"`

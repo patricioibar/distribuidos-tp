@@ -36,26 +36,20 @@ func (s *Socket) SendChunksCount(numChunks int) error {
 	return nil
 }
 
-func (s *Socket) SendChunk(seq uint32, chunkLen int, data []byte) error {
+func (s *Socket) SendBatch(data []byte) error {
 	if s.conn == nil {
 		return net.ErrClosed
 	}
 
-	buf := make([]byte, 8+chunkLen)
-
-	binary.BigEndian.PutUint32(buf[0:4], uint32(seq))
-	binary.BigEndian.PutUint32(buf[4:8], uint32(chunkLen))
-	copy(buf[8:], data)
-
-	total := 0
-	for total < len(buf) {
-		n, err := s.conn.Write(buf[total:])
+	total_sent := 0
+	dataLen := len(data)
+	for total_sent < dataLen {
+		n, err := s.conn.Write(data[total_sent:])
 		if err != nil {
 			return err
 		}
-		total += n
+		total_sent += n
 	}
-
 	return nil
 }
 
