@@ -3,6 +3,7 @@ package common
 import (
 	a "aggregator/common/aggFunctions"
 	"fmt"
+	"strings"
 
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 )
@@ -72,7 +73,12 @@ func getBatchFromAggregatedRows(config *Config, aggregatedRows *[][]interface{})
 	aggregatedColumnNames = append(aggregatedColumnNames, groupedColName)
 
 	for _, agg := range config.Aggregations {
-		aggColName := joinParts([]string{agg.Func, agg.Col}, "_")
+		var aggColName string
+		if config.WorkerId != "" && strings.Contains(config.WorkerId, "reducer") {
+			aggColName = agg.Col
+		} else {
+			aggColName = joinParts([]string{agg.Func, agg.Col}, "_")
+		}
 		aggregatedColumnNames = append(aggregatedColumnNames, aggColName)
 	}
 

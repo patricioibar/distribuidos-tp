@@ -28,6 +28,7 @@ type Config struct {
 	OutputName        string      `json:"output-name" mapstructure:"output-name"`
 	LogLevel          string      `json:"log-level" mapstructure:"log-level"`
 	BatchSize         int         `json:"output-batch-size" mapstructure:"output-batch-size"`
+	IsReducer         bool        `json:"is-reducer" mapstructure:"is-reducer"`
 }
 
 var requiredFields = []string{
@@ -41,6 +42,7 @@ var requiredFields = []string{
 	"output-name",
 	"log-level",
 	"output-batch-size",
+	"is-reducer",
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.

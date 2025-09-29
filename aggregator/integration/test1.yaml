@@ -16,6 +16,7 @@ services:
       OUTPUT_NAME: "output_test1"
       LOG_LEVEL: "DEBUG"
       OUTPUT_BATCH_SIZE: 5
+      IS_REDUCER: "false"
     networks:
       - testing_net
 

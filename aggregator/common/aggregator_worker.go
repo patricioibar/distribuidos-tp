@@ -44,7 +44,6 @@ func (aw *AggregatorWorker) Start() {
 }
 
 func (aw *AggregatorWorker) Close() {
-	println("#### Closing worker:", aw.Config.WorkerId)
 	if err := aw.input.Close(); err != nil {
 		log.Errorf("Failed to close input: %v", err)
 	}
@@ -56,18 +55,20 @@ func (aw *AggregatorWorker) Close() {
 
 func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-		done <- nil
 		log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
 		if err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
+			done <- nil
 			return
 		}
 
 		if len(batch.Rows) != 0 {
 			aw.aggregateBatch(batch)
 		}
+
+		done <- nil
 
 		if batch.IsEndSignal() {
 			aw.SendReducedData()
