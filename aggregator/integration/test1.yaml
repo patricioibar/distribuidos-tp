@@ -1,0 +1,27 @@
+services:
+  aggregator:
+    image: aggregator:latest
+    container_name: aggregator
+    build:
+      context: ../..
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "worker1"
+      WORKERS_COUNT: 1
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"id\"]"
+      AGGREGATIONS: "[{\"col\":\"value\",\"func\":\"sum\"},{\"col\":\"value\",\"func\":\"count\"}]"
+      QUERY_NAME: "test1"
+      INPUT_NAME: "input_test1"
+      OUTPUT_NAME: "output_test1"
+      LOG_LEVEL: "DEBUG"
+      OUTPUT_BATCH_SIZE: 5
+    networks:
+      - testing_net
+
+networks:
+  testing_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.125.0/24

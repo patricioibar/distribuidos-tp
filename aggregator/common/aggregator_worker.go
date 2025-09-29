@@ -44,6 +44,7 @@ func (aw *AggregatorWorker) Start() {
 }
 
 func (aw *AggregatorWorker) Close() {
+	println("#### Closing worker:", aw.Config.WorkerId)
 	if err := aw.input.Close(); err != nil {
 		log.Errorf("Failed to close input: %v", err)
 	}
@@ -55,8 +56,8 @@ func (aw *AggregatorWorker) Close() {
 
 func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-		defer func() { done <- nil }()
-
+		done <- nil
+		log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
 		if err != nil {
@@ -72,6 +73,8 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 			aw.SendReducedData()
 			aw.PropagateEndSignal(batch)
 		}
+
+		println("#### Exiting callback")
 	}
 }
 
@@ -105,6 +108,8 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 }
 
 func (aw *AggregatorWorker) SendReducedData() {
+	log.Debugf("Worker %s sending reduced data, total groups: %d", aw.Config.WorkerId, len(aw.reducedData))
+
 	batchSize := aw.Config.BatchSize
 
 	reducedDataBatch := make(map[string][]a.Aggregation)
@@ -136,6 +141,8 @@ func (aw *AggregatorWorker) sendReducedDataBatch(groupedData map[string][]a.Aggr
 	if err != nil {
 		log.Errorf("Failed to marshal batch: %v", err)
 	}
+
+	log.Debugf("Sending data batch: %v", string(data))
 	if err := aw.output.Send(data); err != nil {
 		log.Errorf("Failed to send message: %v", err)
 	}
@@ -143,13 +150,11 @@ func (aw *AggregatorWorker) sendReducedDataBatch(groupedData map[string][]a.Aggr
 
 func (aw *AggregatorWorker) PropagateEndSignal(batch *ic.RowsBatch) {
 	log.Debugf("Worker %s done, propagating end signal", aw.Config.WorkerId)
-	aw.Close()
 
 	batch.AddWorkerDone(aw.Config.WorkerId)
 
 	if len(batch.WorkersDone) == aw.Config.WorkersCount {
 		log.Debugf("All workers done")
-		aw.input.Delete()
 		endSignal, _ := ic.NewEndSignal().Marshal()
 		aw.output.Send(endSignal)
 		return

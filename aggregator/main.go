@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"syscall"
 
 	"aggregator/common"
 
@@ -37,14 +38,15 @@ func InitLogger(logLevel string) error {
 
 func main() {
 	config, err := common.InitConfig()
-	log.Infof("Loaded config: %+v", config)
 	if err != nil {
-		log.Criticalf("%s", err)
+		log.Fatalf("Failed to load config: %s", err)
 	}
 
 	if err := InitLogger(config.LogLevel); err != nil {
-		log.Criticalf("%s", err)
+		log.Fatalf("%s", err)
 	}
+
+	log.Debugf("Config: %+v", config)
 
 	var input mw.MessageMiddleware
 	var output mw.MessageMiddleware
@@ -62,12 +64,13 @@ func main() {
 	aggregator := common.NewAggregatorWorker(config, input, output)
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-sigChan
-		log.Infof("Received SIGINT, shutting down aggregator...")
+		sig := <-sigChan
+		log.Infof("Received signal %s, shutting down aggregator...", sig)
 		aggregator.Close()
 	}()
 
+	log.Infof("Starting aggregator %s...", config.WorkerId)
 	aggregator.Start()
 }

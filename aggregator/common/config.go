@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -38,12 +39,8 @@ var requiredFields = []string{
 	"query-name",
 	"input-name",
 	"output-name",
-}
-
-// field: default value
-var optionalFields = map[string]interface{}{
-	"log-level":         "INFO",
-	"output-batch-size": 100,
+	"log-level",
+	"output-batch-size",
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.
@@ -63,7 +60,11 @@ func InitConfig() (*Config, error) {
 	}
 
 	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("could not read config: %w", err)
+		// ignore error if config file is not found
+		// as we can get all config from env vars
+		if !strings.Contains(err.Error(), configFilePath) {
+			return nil, fmt.Errorf("could not read config: %w", err)
+		}
 	}
 
 	for _, field := range requiredFields {
@@ -72,16 +73,31 @@ func InitConfig() (*Config, error) {
 		}
 	}
 
+	// Parse complex fields from JSON env vars
+	if s := v.GetString("aggregations"); s != "" {
+		var aggs []AggConfig
+		if err := json.Unmarshal([]byte(s), &aggs); err != nil {
+			return nil, fmt.Errorf("could not parse aggregations JSON: %w", err)
+		}
+		v.Set("aggregations", aggs)
+	}
+
+	if s := v.GetString("group-by"); s != "" {
+		var groups []string
+		if err := json.Unmarshal([]byte(s), &groups); err == nil {
+			v.Set("group-by", groups)
+		} else {
+			parts := strings.Split(s, ",")
+			for i := range parts {
+				parts[i] = strings.TrimSpace(parts[i])
+			}
+			v.Set("group-by", parts)
+		}
+	}
+
 	var config Config
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("could not unmarshal config: %w", err)
-	}
-
-	// Set defaults for optional fields if not set
-	for optField, defaultValue := range optionalFields {
-		if !v.IsSet(optField) {
-			v.Set(optField, defaultValue)
-		}
 	}
 
 	return &config, nil

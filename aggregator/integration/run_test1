@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# set -euo pipefail
+
+TEST_NAME="Test1OneAggregator"
+IMAGE_NAME="aggregator:latest"
+CONTAINER_NAME="aggregator"
+
+BUILD_CONTEXT="../.."
+DOCKERFILE="aggregator/Dockerfile"
+
+NETWORK_NAME="integration_testing_net"
+
+echo ">>> Construyendo imagen $IMAGE_NAME ..."
+docker build -t "$IMAGE_NAME" -f "$DOCKERFILE" "$BUILD_CONTEXT"
+
+# Borrar contenedor previo si existe
+if docker ps -a --format '{{.Names}}' | grep -Eq "^${CONTAINER_NAME}\$"; then
+  echo ">>> Eliminando contenedor existente $CONTAINER_NAME ..."
+  docker rm -f "$CONTAINER_NAME"
+fi
+
+echo ">>> Ejecutando contenedor $CONTAINER_NAME ..."
+docker run -d \
+  --name "$CONTAINER_NAME" \
+  --network "$NETWORK_NAME" \
+  -e WORKER_ID="worker1" \
+  -e WORKERS_COUNT="1" \
+  -e MIDDLEWARE_ADDRESS="amqp://guest:guest@rabbitmq:5672/" \
+  -e GROUP_BY='["id"]' \
+  -e AGGREGATIONS='[{"col":"value","func":"sum"},{"col":"value","func":"count"}]' \
+  -e QUERY_NAME="test1" \
+  -e INPUT_NAME="input_test1" \
+  -e OUTPUT_NAME="output_test1" \
+  -e LOG_LEVEL="DEBUG" \
+  -e OUTPUT_BATCH_SIZE="5" \
+  "$IMAGE_NAME"
+
+echo ">>> Esperando a que arranque el contenedor..."
+sleep 5
+
+# --- Ejecutar test Go específico ---
+echo ">>> Ejecutando test $TEST_NAME en integration_test.go ..."
+/usr/local/go/bin/go test -v -timeout 5s -run ^$TEST_NAME$ ./integration_test.go
+
+docker rm -f "$CONTAINER_NAME"
