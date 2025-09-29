@@ -4,7 +4,6 @@ import (
 	"aggregator/common"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"testing"
 
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -41,7 +40,6 @@ func (s *StubProducer) Close() (error *mw.MessageMiddlewareError) { return nil }
 func (s *StubProducer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
 type StubConsumer struct {
-	lock       sync.Mutex
 	onMessages []mw.OnMessageCallback
 	lastCalled int
 	started    chan struct{}
