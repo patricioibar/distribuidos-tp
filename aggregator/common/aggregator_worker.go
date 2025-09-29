@@ -72,9 +72,9 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 		if batch.IsEndSignal() {
 			aw.SendReducedData()
 			aw.PropagateEndSignal(batch)
+			aw.Close()
 		}
 
-		println("#### Exiting callback")
 	}
 }
 
