@@ -8,6 +8,7 @@ import (
 
 type Consumer struct {
 	name       string
+	sourceName string
 	channel    *amqp.Channel
 	deliveries <-chan amqp.Delivery
 
@@ -65,10 +66,11 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string) 
 	}
 
 	return &Consumer{
-		name:    q.Name,
-		channel: ch,
-		quit:    make(chan struct{}),
-		done:    make(chan struct{}),
+		name:       q.Name,
+		sourceName: sourceName,
+		channel:    ch,
+		quit:       make(chan struct{}),
+		done:       make(chan struct{}),
 	}, nil
 }
 
@@ -129,18 +131,32 @@ func (c *Consumer) StopConsuming() *MessageMiddlewareError {
 
 	c.closeOnce.Do(func() {
 		close(c.quit) // señal al goroutine que pare
+		<-c.done      // esperar a que termine
 	})
-	<-c.done // esperar a que termine
 
 	return nil
 }
 
 func (c *Consumer) Send(message []byte) (error *MessageMiddlewareError) {
-	return &MessageMiddlewareError{Code: MessageMiddlewareConsumerCannotSendError, Msg: "Consumer cannot send messages"}
+	err := c.channel.Publish(
+		c.sourceName,
+		"",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        message,
+		})
+
+	if err != nil {
+		return &MessageMiddlewareError{Code: MessageMiddlewareDisconnectedError, Msg: "Failed to send message"}
+	}
+
+	return nil
 }
 
 func (c *Consumer) Close() (error *MessageMiddlewareError) {
-	_ = c.StopConsuming()
+	c.StopConsuming()
 
 	if c.channel != nil {
 		if err := c.channel.Close(); err != nil {
@@ -151,7 +167,7 @@ func (c *Consumer) Close() (error *MessageMiddlewareError) {
 }
 
 func (c *Consumer) Delete() (error *MessageMiddlewareError) {
-	_ = c.StopConsuming()
+	c.StopConsuming()
 
 	if c.channel != nil {
 		_, err := c.channel.QueueDelete(c.name, false, false, false)

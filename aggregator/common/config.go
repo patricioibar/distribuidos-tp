@@ -18,7 +18,7 @@ type AggConfig struct {
 // Config represents the application's configuration structure.
 type Config struct {
 	WorkerId          string      `json:"worker-id" mapstructure:"worker-id"`
-	IsReducer         bool        `json:"workers-count" mapstructure:"workers-count"`
+	WorkersCount      int         `json:"workers-count" mapstructure:"workers-count"`
 	MiddlewareAddress string      `json:"middleware-address" mapstructure:"middleware-address"`
 	GroupBy           []string    `json:"group-by" mapstructure:"group-by"`
 	Aggregations      []AggConfig `json:"aggregations" mapstructure:"aggregations"`

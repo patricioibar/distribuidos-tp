@@ -55,7 +55,7 @@ func (aw *AggregatorWorker) Close() {
 
 func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-		defer func() { done <- nil }() // Acknowledge message after processing
+		defer func() { done <- nil }()
 
 		jsonStr := string(consumeChannel.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
@@ -70,6 +70,7 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 
 		if batch.IsEndSignal() {
 			aw.SendReducedData()
+			aw.PropagateEndSignal(batch)
 		}
 	}
 }
@@ -138,4 +139,22 @@ func (aw *AggregatorWorker) sendReducedDataBatch(groupedData map[string][]a.Aggr
 	if err := aw.output.Send(data); err != nil {
 		log.Errorf("Failed to send message: %v", err)
 	}
+}
+
+func (aw *AggregatorWorker) PropagateEndSignal(batch *ic.RowsBatch) {
+	log.Debugf("Worker %s done, propagating end signal", aw.Config.WorkerId)
+	aw.Close()
+
+	batch.AddWorkerDone(aw.Config.WorkerId)
+
+	if len(batch.WorkersDone) == aw.Config.WorkersCount {
+		log.Debugf("All workers done")
+		aw.input.Delete()
+		endSignal, _ := ic.NewEndSignal().Marshal()
+		aw.output.Send(endSignal)
+		return
+	}
+
+	endSignal, _ := batch.Marshal()
+	aw.input.Send(endSignal) // re-enqueue the end signal with updated workers done
 }
