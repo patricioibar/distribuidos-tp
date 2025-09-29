@@ -26,7 +26,7 @@ type Config struct {
 	InputName         string      `json:"input-name" mapstructure:"input-name"`
 	OutputName        string      `json:"output-name" mapstructure:"output-name"`
 	LogLevel          string      `json:"log-level" mapstructure:"log-level"`
-	BatchSize         int         `json:"reducer-batch-size" mapstructure:"reducer-batch-size"`
+	BatchSize         int         `json:"output-batch-size" mapstructure:"output-batch-size"`
 }
 
 var requiredFields = []string{
@@ -42,8 +42,8 @@ var requiredFields = []string{
 
 // field: default value
 var optionalFields = map[string]interface{}{
-	"log-level":          "INFO",
-	"reducer-batch-size": 100,
+	"log-level":         "INFO",
+	"output-batch-size": 100,
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.

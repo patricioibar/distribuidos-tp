@@ -8,108 +8,78 @@ import (
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
-const maxBatchBufferSize = 100
-
 var log = logging.MustGetLogger("log")
 
 type AggregatorWorker struct {
-	Config    *Config
-	input     mw.MessageMiddleware
-	output    mw.MessageMiddleware
-	callback  mw.OnMessageCallback
-	batchChan chan ic.RowsBatch
-	closeChan chan struct{}
+	Config      *Config
+	input       mw.MessageMiddleware
+	output      mw.MessageMiddleware
+	callback    mw.OnMessageCallback
+	reducedData map[string][]a.Aggregation
+	closeChan   chan struct{}
 }
 
 func NewAggregatorWorker(config *Config, input mw.MessageMiddleware, output mw.MessageMiddleware) *AggregatorWorker {
-	batchChan := make(chan ic.RowsBatch, maxBatchBufferSize)
-	onMessage := aggregatorMessageCallback(config, batchChan)
-
-	return &AggregatorWorker{
-		Config:    config,
-		input:     input,
-		output:    output,
-		callback:  onMessage,
-		batchChan: batchChan,
-		closeChan: make(chan struct{}),
+	reducedData := make(map[string][]a.Aggregation)
+	aggregator := AggregatorWorker{
+		Config:      config,
+		input:       input,
+		output:      output,
+		reducedData: reducedData,
+		closeChan:   make(chan struct{}),
 	}
+
+	aggregator.callback = aggregator.messageCallback()
+
+	return &aggregator
 }
 
-func (a *AggregatorWorker) Start() {
-	if err := a.input.StartConsuming(a.callback); err != nil {
-		a.Close()
+func (aw *AggregatorWorker) Start() {
+	if err := aw.input.StartConsuming(aw.callback); err != nil {
+		aw.Close()
 		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
 
-	for {
-		select {
-		case <-a.closeChan:
-			return
-		case batch := <-a.batchChan:
-			data, err := batch.String()
-			if err != nil {
-				log.Errorf("Failed to marshal batch: %v", err)
-				continue
-			}
-			if err := a.output.Send([]byte(data)); err != nil {
-				log.Errorf("Failed to send message: %v", err)
-			}
-		}
-	}
+	<-aw.closeChan
 }
 
-func (a *AggregatorWorker) Close() {
-	if err := a.input.Close(); err != nil {
+func (aw *AggregatorWorker) Close() {
+	if err := aw.input.Close(); err != nil {
 		log.Errorf("Failed to close input: %v", err)
 	}
-	if err := a.output.Close(); err != nil {
+	if err := aw.output.Close(); err != nil {
 		log.Errorf("Failed to close output: %v", err)
 	}
-	close(a.closeChan)
+	close(aw.closeChan)
 }
 
-func aggregatorMessageCallback(config *Config, batchChan chan ic.RowsBatch) mw.OnMessageCallback {
+func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		defer func() { done <- nil }() // Acknowledge message after processing
 
 		jsonStr := string(consumeChannel.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
 		if err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
-			// no mando un error por el chan acá,
-			// porque si lo mando el mensaje se reencola y puede que
-			// vuelva a fallar en bucle para siempre
-			done <- nil
 			return
 		}
 
-		if len(batch.Rows) == 0 {
-			done <- nil
-			return
+		if len(batch.Rows) != 0 {
+			aw.aggregateBatch(batch)
 		}
 
-		aggregatedRows, err := aggregateRows(batch, config)
-
-		if err != nil {
-			log.Errorf("Failed to aggregate rows: %v", err)
-			done <- nil
-			return
+		if batch.IsEndSignal() {
+			aw.SendReducedData()
 		}
-
-		aggregatedBatch := getBatchFromAggregatedRows(config, aggregatedRows)
-
-		batchChan <- *aggregatedBatch
-		done <- nil
 	}
 }
 
-func aggregateRows(batch *ic.RowsBatch, config *Config) (*[][]interface{}, error) {
+func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 
-	groupByIndexes := getGroupByColIndexes(config, batch)
+	groupByIndexes := getGroupByColIndexes(aw.Config, batch)
 
-	aggIndexes := getAggColIndexes(config, batch)
+	aggIndexes := getAggColIndexes(aw.Config, batch)
 
-	// key: group by values concatenated, value: aggregations list
-	groupedData := make(map[string][]a.Aggregation)
 	for _, row := range batch.Rows {
 		if len(row) != len(batch.ColumnNames) {
 			// ignore row
@@ -119,20 +89,53 @@ func aggregateRows(batch *ic.RowsBatch, config *Config) (*[][]interface{}, error
 
 		key := getGroupByKey(groupByIndexes, row)
 
-		if _, exists := groupedData[key]; !exists {
-			groupedData[key] = make([]a.Aggregation, len(config.Aggregations))
-			for i, agg := range config.Aggregations {
-				groupedData[key][i] = a.NewAggregation(agg.Func)
+		if _, exists := aw.reducedData[key]; !exists {
+			aw.reducedData[key] = make([]a.Aggregation, len(aw.Config.Aggregations))
+			for i, agg := range aw.Config.Aggregations {
+				aw.reducedData[key][i] = a.NewAggregation(agg.Func)
 			}
 		}
 
-		for i, agg := range config.Aggregations {
+		for i, agg := range aw.Config.Aggregations {
 			idx := aggIndexes[agg.Col]
-			groupedData[key][i] = groupedData[key][i].Add(row[idx])
+			aw.reducedData[key][i] = aw.reducedData[key][i].Add(row[idx])
 		}
 	}
+}
 
-	result := getAggregatedRowsFromGroupedData(&groupedData)
+func (aw *AggregatorWorker) SendReducedData() {
+	batchSize := aw.Config.BatchSize
 
-	return result, nil
+	reducedDataBatch := make(map[string][]a.Aggregation)
+	i := 0
+	for key, aggs := range aw.reducedData {
+		if i >= batchSize {
+			aw.sendReducedDataBatch(reducedDataBatch)
+
+			reducedDataBatch = make(map[string][]a.Aggregation)
+			i = 0
+		}
+
+		reducedDataBatch[key] = aggs
+		i++
+	}
+
+	if len(reducedDataBatch) > 0 {
+		aw.sendReducedDataBatch(reducedDataBatch)
+
+	}
+
+}
+
+func (aw *AggregatorWorker) sendReducedDataBatch(groupedData map[string][]a.Aggregation) {
+	rows := getAggregatedRowsFromGroupedData(&groupedData)
+	batch := getBatchFromAggregatedRows(aw.Config, rows)
+
+	data, err := batch.String()
+	if err != nil {
+		log.Errorf("Failed to marshal batch: %v", err)
+	}
+	if err := aw.output.Send([]byte(data)); err != nil {
+		log.Errorf("Failed to send message: %v", err)
+	}
 }

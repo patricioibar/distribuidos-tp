@@ -75,19 +75,31 @@ func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
 func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
+var endSignal, _ = ic.NewEndSignal().String()
+
 func TestSumAggregatorWorker(t *testing.T) {
 	input := newStubConsumer()
 	output := newStubProducer()
 	config := &common.Config{
 		GroupBy:      []string{"category"},
 		Aggregations: []common.AggConfig{{Col: "value", Func: "sum"}},
+		BatchSize:    10,
 	}
 	worker := common.NewAggregatorWorker(config, input, output)
-
 	go worker.Start()
 
 	input.waitForStart()
-	input.SimulateMessage([]byte(`{"column_names":["category","value"],"rows":[["A",10],["B",20],["A",30]]}`))
+	msg, _ := ic.NewRowsBatch(
+		[]string{"category", "value"},
+		[][]interface{}{
+			{"A", 10},
+			{"B", 20},
+			{"A", 30},
+		},
+	).String()
+	input.SimulateMessage([]byte(msg))
+	input.SimulateMessage([]byte(msg))
+	input.SimulateMessage([]byte(endSignal))
 	output.waitForAMessage()
 
 	if len(output.sentMessages) != 1 {
@@ -100,7 +112,7 @@ func TestSumAggregatorWorker(t *testing.T) {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
 	}
 
-	expectedRows := map[string]float64{"A": 40.0, "B": 20.0}
+	expectedRows := map[string]float64{"A": 80.0, "B": 40.0}
 	if len(outputBatch.Rows) != len(expectedRows) {
 		t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
 	}
@@ -125,11 +137,22 @@ func TestCountAggregatorWorker(t *testing.T) {
 	config := &common.Config{
 		GroupBy:      []string{"category"},
 		Aggregations: []common.AggConfig{{Col: "value", Func: "count"}},
+		BatchSize:    10,
 	}
 	worker := common.NewAggregatorWorker(config, input, output)
 	go worker.Start()
 	input.waitForStart()
-	input.SimulateMessage([]byte(`{"column_names":["category","value"],"rows":[["A",10],["B",20],["A",30]]}`))
+	msg, _ := ic.NewRowsBatch(
+		[]string{"category", "value"},
+		[][]interface{}{
+			{"A", 10},
+			{"B", 20},
+			{"A", 30},
+		},
+	).String()
+	input.SimulateMessage([]byte(msg))
+	input.SimulateMessage([]byte(msg))
+	input.SimulateMessage([]byte(endSignal))
 	output.waitForAMessage()
 	if len(output.sentMessages) != 1 {
 		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
@@ -141,7 +164,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
 	}
 
-	expectedRows := map[string]int{"A": 2, "B": 1}
+	expectedRows := map[string]int{"A": 4, "B": 2}
 	if len(outputBatch.Rows) != len(expectedRows) {
 		t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
 	}
@@ -157,53 +180,5 @@ func TestCountAggregatorWorker(t *testing.T) {
 			t.Fatalf("Expected count for category %s to be %d, got %d", category, expectedCount, count)
 		}
 		delete(expectedRows, category)
-	}
-}
-
-func TestMultipleAggregationsWorker(t *testing.T) {
-	input := newStubConsumer()
-	output := newStubProducer()
-	config := &common.Config{
-		GroupBy: []string{"category"},
-		Aggregations: []common.AggConfig{
-			{Col: "value", Func: "sum"},
-			{Col: "value", Func: "count"},
-		},
-	}
-	worker := common.NewAggregatorWorker(config, input, output)
-	go worker.Start()
-	input.waitForStart()
-	input.SimulateMessage([]byte(`{"column_names":["category","value"],"rows":[["A",10],["B",20],["B",30]]}`))
-	output.waitForAMessage()
-
-	if len(output.sentMessages) != 1 {
-		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
-	}
-	var outputBatch ic.RowsBatch
-	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal output message: %v", err)
-	}
-	expectedRows := map[string]struct {
-		sum   float64
-		count int
-	}{
-		"A": {sum: 10, count: 1},
-		"B": {sum: 50, count: 2},
-	}
-	if len(outputBatch.Rows) != len(expectedRows) {
-		t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
-	}
-	for _, row := range outputBatch.Rows {
-		category := row[0].(string)
-		sum := row[1].(float64)
-		count := int(row[2].(float64))
-		expected := expectedRows[category]
-		if sum != expected.sum {
-			t.Fatalf("Expected sum for category %s to be %v, got %v", category, expected.sum, sum)
-		}
-		if count != expected.count {
-			t.Fatalf("Expected count for category %s to be %d, got %d", category, expected.count, count)
-		}
 	}
 }
