@@ -27,6 +27,7 @@ const (
 	// hablar con el corrector
 	MessageMiddlewareProducerCannotConsumeError
 	MessageMiddlewareConsumerCannotSendError
+	MessageMiddlewareWorkerDone
 )
 
 // cambié el done chan a un puntero para poder devolver nil

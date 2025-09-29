@@ -6,17 +6,18 @@ import (
 )
 
 type RowsBatch struct {
-	JobDone     bool            `json:"job_done"`
+	EndSignal   bool            `json:"end_signal"`
 	ColumnNames []string        `json:"column_names"`
 	Rows        [][]interface{} `json:"rows"`
+	WorkersDone []string        `json:"workers_done,omitempty"`
 }
 
-func (rb *RowsBatch) String() (string, error) {
+func (rb *RowsBatch) Marshal() ([]byte, error) {
 	data, err := json.Marshal(rb)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal RowsBatch: %v", err)
+		return nil, fmt.Errorf("failed to marshal RowsBatch: %v", err)
 	}
-	return string(data), nil
+	return data, nil
 }
 
 func RowsBatchFromString(data string) (*RowsBatch, error) {
@@ -29,17 +30,21 @@ func RowsBatchFromString(data string) (*RowsBatch, error) {
 
 func NewEndSignal() *RowsBatch {
 	return &RowsBatch{
-		JobDone: true,
+		EndSignal: true,
 	}
 }
 
+func (rb *RowsBatch) AddWorkerDone(workerId string) {
+	rb.WorkersDone = append(rb.WorkersDone, workerId)
+}
+
 func (rb *RowsBatch) IsEndSignal() bool {
-	return rb.JobDone
+	return rb.EndSignal
 }
 
 func NewRowsBatch(columnNames []string, rows [][]interface{}) *RowsBatch {
 	return &RowsBatch{
-		JobDone:     false,
+		EndSignal:   false,
 		ColumnNames: columnNames,
 		Rows:        rows,
 	}

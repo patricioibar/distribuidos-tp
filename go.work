@@ -1,4 +1,4 @@
-go 1.25.1
+go 1.25
 
 use (
 	./aggregator
@@ -7,4 +7,5 @@ use (
 	./communication
 	./innercommunication
 	./middleware
+	./filter
 )

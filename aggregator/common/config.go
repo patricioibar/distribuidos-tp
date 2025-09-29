@@ -18,7 +18,7 @@ type AggConfig struct {
 // Config represents the application's configuration structure.
 type Config struct {
 	WorkerId          string      `json:"worker-id" mapstructure:"worker-id"`
-	IsReducer         bool        `json:"is_reducer" mapstructure:"is_reducer"`
+	WorkersCount      int         `json:"workers-count" mapstructure:"workers-count"`
 	MiddlewareAddress string      `json:"middleware-address" mapstructure:"middleware-address"`
 	GroupBy           []string    `json:"group-by" mapstructure:"group-by"`
 	Aggregations      []AggConfig `json:"aggregations" mapstructure:"aggregations"`
@@ -26,12 +26,12 @@ type Config struct {
 	InputName         string      `json:"input-name" mapstructure:"input-name"`
 	OutputName        string      `json:"output-name" mapstructure:"output-name"`
 	LogLevel          string      `json:"log-level" mapstructure:"log-level"`
-	BatchSize         int         `json:"reducer-batch-size" mapstructure:"reducer-batch-size"`
+	BatchSize         int         `json:"output-batch-size" mapstructure:"output-batch-size"`
 }
 
 var requiredFields = []string{
 	"worker-id",
-	"is_reducer",
+	"workers-count",
 	"middleware-address",
 	"group-by",
 	"aggregations",
@@ -42,8 +42,8 @@ var requiredFields = []string{
 
 // field: default value
 var optionalFields = map[string]interface{}{
-	"log-level":          "INFO",
-	"reducer-batch-size": 100,
+	"log-level":         "INFO",
+	"output-batch-size": 100,
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.
