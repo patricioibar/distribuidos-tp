@@ -6,9 +6,9 @@ import (
 )
 
 type RowsBatch struct {
-	EndSignal   bool            `json:"end_signal"`
-	ColumnNames []string        `json:"column_names"`
-	Rows        [][]interface{} `json:"rows"`
+	EndSignal   bool            `json:"end_signal,omitempty"`
+	ColumnNames []string        `json:"column_names,omitempty"`
+	Rows        [][]interface{} `json:"rows,omitempty"`
 	WorkersDone []string        `json:"workers_done,omitempty"`
 }
 
