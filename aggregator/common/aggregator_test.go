@@ -75,7 +75,7 @@ func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
 func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
-var endSignal, _ = ic.NewEndSignal().String()
+var endSignal, _ = ic.NewEndSignal().Marshal()
 
 func TestSumAggregatorWorker(t *testing.T) {
 	input := newStubConsumer()
@@ -96,10 +96,10 @@ func TestSumAggregatorWorker(t *testing.T) {
 			{"B", 20},
 			{"A", 30},
 		},
-	).String()
-	input.SimulateMessage([]byte(msg))
-	input.SimulateMessage([]byte(msg))
-	input.SimulateMessage([]byte(endSignal))
+	).Marshal()
+	input.SimulateMessage(msg)
+	input.SimulateMessage(msg)
+	input.SimulateMessage(endSignal)
 	output.waitForAMessage()
 
 	if len(output.sentMessages) != 1 {
@@ -149,10 +149,10 @@ func TestCountAggregatorWorker(t *testing.T) {
 			{"B", 20},
 			{"A", 30},
 		},
-	).String()
-	input.SimulateMessage([]byte(msg))
-	input.SimulateMessage([]byte(msg))
-	input.SimulateMessage([]byte(endSignal))
+	).Marshal()
+	input.SimulateMessage(msg)
+	input.SimulateMessage(msg)
+	input.SimulateMessage(endSignal)
 	output.waitForAMessage()
 	if len(output.sentMessages) != 1 {
 		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))

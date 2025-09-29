@@ -131,11 +131,11 @@ func (aw *AggregatorWorker) sendReducedDataBatch(groupedData map[string][]a.Aggr
 	rows := getAggregatedRowsFromGroupedData(&groupedData)
 	batch := getBatchFromAggregatedRows(aw.Config, rows)
 
-	data, err := batch.String()
+	data, err := batch.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal batch: %v", err)
 	}
-	if err := aw.output.Send([]byte(data)); err != nil {
+	if err := aw.output.Send(data); err != nil {
 		log.Errorf("Failed to send message: %v", err)
 	}
 }

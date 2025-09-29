@@ -12,25 +12,25 @@ import (
 
 // Mock implementations for testing
 type MockMiddleware struct {
-	mu             sync.Mutex
-	messages       [][]byte
-	onMessage      mw.OnMessageCallback
-	isConsuming    bool
-	shouldFailSend bool
+	mu                sync.Mutex
+	messages          [][]byte
+	onMessage         mw.OnMessageCallback
+	isConsuming       bool
+	shouldFailSend    bool
 	shouldFailConsume bool
 }
 
 func (m *MockMiddleware) StartConsuming(callback mw.OnMessageCallback) *mw.MessageMiddlewareError {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if m.shouldFailConsume {
 		return &mw.MessageMiddlewareError{
 			Code: mw.MessageMiddlewareMessageError,
 			Msg:  "mock consume error",
 		}
 	}
-	
+
 	m.onMessage = callback
 	m.isConsuming = true
 	return nil
@@ -39,7 +39,7 @@ func (m *MockMiddleware) StartConsuming(callback mw.OnMessageCallback) *mw.Messa
 func (m *MockMiddleware) StopConsuming() *mw.MessageMiddlewareError {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.isConsuming = false
 	return nil
 }
@@ -47,14 +47,14 @@ func (m *MockMiddleware) StopConsuming() *mw.MessageMiddlewareError {
 func (m *MockMiddleware) Send(message []byte) *mw.MessageMiddlewareError {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if m.shouldFailSend {
 		return &mw.MessageMiddlewareError{
 			Code: mw.MessageMiddlewareMessageError,
 			Msg:  "mock send error",
 		}
 	}
-	
+
 	m.messages = append(m.messages, message)
 	return nil
 }
@@ -135,7 +135,7 @@ func TestParseTimestamp(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := parseTimestamp(tt.input)
-			
+
 			if tt.shouldErr {
 				if err == nil {
 					t.Errorf("expected error but got none")
@@ -169,7 +169,7 @@ func TestFilterRowsByYear(t *testing.T) {
 					{1, "2024-03-15 10:30:45", "sample data"},
 					{2, "2024-05-20 14:22:33", "more data"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			expected: ic.RowsBatch{
 				ColumnNames: []string{"id", "year", "data", "semester"},
@@ -177,7 +177,7 @@ func TestFilterRowsByYear(t *testing.T) {
 					{1, "2024-03-15 10:30:45", "sample data", "FirstSemester"},
 					{2, "2024-05-20 14:22:33", "more data", "FirstSemester"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			shouldErr: false,
 		},
@@ -189,7 +189,7 @@ func TestFilterRowsByYear(t *testing.T) {
 					{1, "2025-08-15 10:30:45", 100},
 					{2, "2025-12-20 14:22:33", 200},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			expected: ic.RowsBatch{
 				ColumnNames: []string{"id", "year", "value", "semester"},
@@ -197,7 +197,7 @@ func TestFilterRowsByYear(t *testing.T) {
 					{1, "2025-08-15 10:30:45", 100, "SecondSemester"},
 					{2, "2025-12-20 14:22:33", 200, "SecondSemester"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			shouldErr: false,
 		},
@@ -211,7 +211,7 @@ func TestFilterRowsByYear(t *testing.T) {
 					{3, "2026-03-15 10:30:45", "future data"},
 					{4, "2025-08-15 10:30:45", "good data 2"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			expected: ic.RowsBatch{
 				ColumnNames: []string{"id", "year", "data", "semester"},
@@ -219,7 +219,7 @@ func TestFilterRowsByYear(t *testing.T) {
 					{2, "2024-03-15 10:30:45", "good data", "FirstSemester"},
 					{4, "2025-08-15 10:30:45", "good data 2", "SecondSemester"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			shouldErr: false,
 		},
@@ -230,7 +230,7 @@ func TestFilterRowsByYear(t *testing.T) {
 				Rows: [][]interface{}{
 					{1, "2024-03-15 10:30:45", "sample data"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			shouldErr: true,
 			errorMsg:  "year column not found",
@@ -242,7 +242,7 @@ func TestFilterRowsByYear(t *testing.T) {
 				Rows: [][]interface{}{
 					{1}, // missing columns
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			shouldErr: true,
 			errorMsg:  "row does not have enough columns",
@@ -254,7 +254,7 @@ func TestFilterRowsByYear(t *testing.T) {
 				Rows: [][]interface{}{
 					{1, "invalid-timestamp", "sample data"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			shouldErr: true,
 		},
@@ -265,7 +265,7 @@ func TestFilterRowsByYear(t *testing.T) {
 				Rows: [][]interface{}{
 					{1, 20240315, "sample data"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			shouldErr: true,
 			errorMsg:  "year column is not a string",
@@ -275,12 +275,12 @@ func TestFilterRowsByYear(t *testing.T) {
 			batch: ic.RowsBatch{
 				ColumnNames: []string{"id", "year", "data"},
 				Rows:        [][]interface{}{},
-				JobDone:     false,
+				EndSignal:   false,
 			},
 			expected: ic.RowsBatch{
 				ColumnNames: []string{"id", "year", "data", "semester"},
 				Rows:        [][]interface{}{},
-				JobDone:     false,
+				EndSignal:   false,
 			},
 			shouldErr: false,
 		},
@@ -289,7 +289,7 @@ func TestFilterRowsByYear(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := filterRowsByYear(tt.batch)
-			
+
 			if tt.shouldErr {
 				if err == nil {
 					t.Errorf("expected error but got none")
@@ -303,41 +303,41 @@ func TestFilterRowsByYear(t *testing.T) {
 					t.Errorf("unexpected error: %v", err)
 					return
 				}
-				
+
 				// Check column names
 				if len(result.ColumnNames) != len(tt.expected.ColumnNames) {
 					t.Errorf("expected %d columns, got %d", len(tt.expected.ColumnNames), len(result.ColumnNames))
 					return
 				}
-				
+
 				for i, col := range tt.expected.ColumnNames {
 					if result.ColumnNames[i] != col {
 						t.Errorf("expected column %d to be '%s', got '%s'", i, col, result.ColumnNames[i])
 					}
 				}
-				
+
 				// Check rows
 				if len(result.Rows) != len(tt.expected.Rows) {
 					t.Errorf("expected %d rows, got %d", len(tt.expected.Rows), len(result.Rows))
 					return
 				}
-				
+
 				for i, expectedRow := range tt.expected.Rows {
 					if len(result.Rows[i]) != len(expectedRow) {
 						t.Errorf("row %d: expected %d columns, got %d", i, len(expectedRow), len(result.Rows[i]))
 						continue
 					}
-					
+
 					for j, expectedVal := range expectedRow {
 						if result.Rows[i][j] != expectedVal {
 							t.Errorf("row %d, col %d: expected %v, got %v", i, j, expectedVal, result.Rows[i][j])
 						}
 					}
 				}
-				
+
 				// Check JobDone
-				if result.JobDone != tt.expected.JobDone {
-					t.Errorf("expected JobDone %v, got %v", tt.expected.JobDone, result.JobDone)
+				if result.EndSignal != tt.expected.EndSignal {
+					t.Errorf("expected JobDone %v, got %v", tt.expected.EndSignal, result.EndSignal)
 				}
 			}
 		})
@@ -375,7 +375,7 @@ func TestGetFilterFunction(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			batchChan := make(chan ic.RowsBatch, 10)
 			callback, err := getFilterFunction(batchChan, tt.filterType)
-			
+
 			if tt.shouldErr {
 				if err == nil {
 					t.Errorf("expected error but got none")
@@ -393,7 +393,7 @@ func TestGetFilterFunction(t *testing.T) {
 					t.Errorf("expected callback function but got nil")
 				}
 			}
-			
+
 			close(batchChan)
 		})
 	}
@@ -420,7 +420,7 @@ func TestFilterCallbackFunction(t *testing.T) {
 				Rows: [][]interface{}{
 					{1, "2024-03-15 10:30:45", "sample data"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			expectedBatch: true,
 			shouldError:   false,
@@ -430,7 +430,7 @@ func TestFilterCallbackFunction(t *testing.T) {
 			batch: ic.RowsBatch{
 				ColumnNames: []string{"id", "year", "data"},
 				Rows:        [][]interface{}{},
-				JobDone:     false,
+				EndSignal:   false,
 			},
 			expectedBatch: false,
 			shouldError:   false,
@@ -442,7 +442,7 @@ func TestFilterCallbackFunction(t *testing.T) {
 				Rows: [][]interface{}{
 					{1, "2024-03-15 10:30:45", "sample data"},
 				},
-				JobDone: false,
+				EndSignal: false,
 			},
 			expectedBatch: false,
 			shouldError:   true,
@@ -462,13 +462,13 @@ func TestFilterCallbackFunction(t *testing.T) {
 			}
 
 			done := make(chan *mw.MessageMiddlewareError, 1)
-			
+
 			// Execute callback
 			callback(message, done)
-			
+
 			// Check result
 			result := <-done
-			
+
 			if tt.shouldError {
 				if result == nil {
 					t.Errorf("expected error but got none")
@@ -492,7 +492,7 @@ func TestFilterCallbackFunction(t *testing.T) {
 			}
 		})
 	}
-	
+
 	close(batchChan)
 }
 
@@ -530,10 +530,10 @@ func TestNewFilter(t *testing.T) {
 		}
 	})
 
-	// Note: We can't easily test invalid filter types because NewFilter 
-	// calls log.Fatalf which terminates the process. This is a design 
+	// Note: We can't easily test invalid filter types because NewFilter
+	// calls log.Fatalf which terminates the process. This is a design
 	// choice in the original code that makes unit testing difficult.
-	// In a production environment, this should be refactored to return 
+	// In a production environment, this should be refactored to return
 	// an error instead of calling log.Fatalf.
 }
 
@@ -556,7 +556,7 @@ func TestFilterWorkerIntegration(t *testing.T) {
 			{2, "2025-08-20 14:22:33", "more data"},
 			{3, "2023-01-10 09:15:20", "old data"}, // should be filtered out
 		},
-		JobDone: false,
+		EndSignal: false,
 	}
 
 	testData, err := json.Marshal(testBatch)
@@ -672,7 +672,7 @@ func TestFilterWorkerStartAndClose(t *testing.T) {
 		}
 	})
 
-	// Note: We can't easily test the consume error case because Start 
+	// Note: We can't easily test the consume error case because Start
 	// calls log.Fatalf when StartConsuming fails, which terminates the process.
 	// This is a design choice in the original code that makes unit testing difficult.
 }
@@ -698,7 +698,7 @@ func TestFilterWorkerErrorHandling(t *testing.T) {
 			Rows: [][]interface{}{
 				{1, "2024-03-15 10:30:45", "sample data"},
 			},
-			JobDone: false,
+			EndSignal: false,
 		}
 
 		testData, err := json.Marshal(testBatch)

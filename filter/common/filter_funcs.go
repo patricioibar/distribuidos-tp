@@ -7,12 +7,10 @@ import (
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 )
 
-
-
 func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	var filteredRows [][]interface{}
 
-	indexYear := -1 
+	indexYear := -1
 	for i, header := range batch.ColumnNames {
 		if header == "year" {
 			indexYear = i
@@ -25,12 +23,12 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	}
 
 	monthsOfFirstSemester := map[time.Month]bool{
-		time.January:   true,
-		time.February:  true,
-		time.March:     true,
-		time.April:     true,
-		time.May:       true,
-		time.June:      true,
+		time.January:  true,
+		time.February: true,
+		time.March:    true,
+		time.April:    true,
+		time.May:      true,
+		time.June:     true,
 	}
 
 	for _, row := range batch.Rows {
@@ -46,7 +44,7 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		if err != nil {
 			return ic.RowsBatch{}, err
 		}
-		
+
 		if timestamp.Year() == 2024 || timestamp.Year() == 2025 {
 			if monthsOfFirstSemester[timestamp.Month()] {
 				row = append(row, "FirstSemester")
@@ -59,7 +57,7 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	batch.ColumnNames = append(batch.ColumnNames, "semester")
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		JobDone:     batch.JobDone,
+		EndSignal:   batch.EndSignal,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
@@ -68,7 +66,7 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	var filteredRows [][]interface{}
 
-	indexTimestamp := -1 
+	indexTimestamp := -1
 	for i, header := range batch.ColumnNames {
 		if header == "timestamp" {
 			indexTimestamp = i
@@ -101,7 +99,7 @@ func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		JobDone:     batch.JobDone,
+		EndSignal:   batch.EndSignal,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
@@ -110,7 +108,7 @@ func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
 func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	var filteredRows [][]interface{}
 
-	indexAmount := -1 
+	indexAmount := -1
 	for i, header := range batch.ColumnNames {
 		if header == "final_amount" {
 			indexAmount = i
@@ -139,11 +137,10 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		JobDone:     batch.JobDone,
+		EndSignal:   batch.EndSignal,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
-
 
 }
 
@@ -183,16 +180,13 @@ func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		JobDone:     batch.JobDone,
+		EndSignal:   batch.EndSignal,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
 }
 
-
-
-
-func parseTimestamp (timestampStr string) (time.Time, error) {
+func parseTimestamp(timestampStr string) (time.Time, error) {
 	layout := "2006-01-02 15:04:05"
 	return time.Parse(layout, timestampStr)
 }
