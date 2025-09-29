@@ -1,6 +1,6 @@
 module aggregator
 
-go 1.25.1
+go 1.25
 
 require (
 	github.com/patricioibar/distribuidos-tp/innercommunication v0.0.0-00010101000000-000000000000
