@@ -1,0 +1,5 @@
+{
+    "batch-size": 100,
+    "coffee-analyzer-address": "localhost:50051",
+    "log-level": "info"
+}

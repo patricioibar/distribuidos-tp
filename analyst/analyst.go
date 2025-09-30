@@ -1,4 +1,4 @@
-package analyst
+package main
 
 import (
 	"os"
@@ -46,7 +46,11 @@ func main() {
 		CoffeeAnalyzerAddress: config.CoffeeAnalyzerAddress,
 	}
 
-	go serverConn.sendDataset("users.csv", Users)
+	menuItems := []MenuItem{}
+	serverConn.sendDataset("./menu_items.csv", &menuItems)
 
-	go serverConn.sendDataset("transactions.csv", Transactions)
+	users := []User{}
+	serverConn.sendDataset("./users.csv", &users)
+
+	//go serverConn.sendDataset("transactions.csv", Transactions)
 }

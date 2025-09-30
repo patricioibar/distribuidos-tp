@@ -1,4 +1,4 @@
-package analyst
+package main
 
 import (
 	"encoding/csv"
@@ -22,7 +22,7 @@ func (r *Reader) getBatch(batchCount int, v interface{}) error {
 
 	reader := csv.NewReader(file)
 	rows := [][]string{}
-	end := batchCount + r.BatchSize
+	end := batchCount + r.BatchSize + 1
 
 	_, _ = reader.Read() // Skip header
 
@@ -39,9 +39,11 @@ func (r *Reader) getBatch(batchCount int, v interface{}) error {
 	}
 
 	// Read up to BatchSize rows
-	for i := batchCount; i < end; i++ {
+	eof_reached := false
+	for i := batchCount + 1; i < end; i++ {
 		record, err := reader.Read()
 		if err == io.EOF {
+			eof_reached = true
 			break
 		}
 		if err != nil {
@@ -54,6 +56,10 @@ func (r *Reader) getBatch(batchCount int, v interface{}) error {
 		addRowToData(v, row)
 	}
 
+	if eof_reached {
+		return io.EOF
+	}
+
 	return nil
 }
 
@@ -61,7 +67,7 @@ func addRowToData(v interface{}, row []string) {
 
 	format := "2006-01-02 15:04:05"
 
-	switch v.(type) {
+	switch v := v.(type) {
 	case *[]Transaction:
 		store_id, _ := strconv.Atoi(row[1])
 		payment_method_id, _ := strconv.Atoi(row[2])
@@ -72,7 +78,7 @@ func addRowToData(v interface{}, row []string) {
 		final_amount, _ := strconv.ParseFloat(row[7], 64)
 		created_at, _ := time.Parse(format, row[8])
 
-		*v.(*[]Transaction) = append(*v.(*[]Transaction), Transaction{
+		*v = append(*v, Transaction{
 			transaction_id:    row[0],
 			store_id:          store_id,
 			payment_method_id: payment_method_id,
@@ -90,7 +96,7 @@ func addRowToData(v interface{}, row []string) {
 		subtotal, _ := strconv.ParseFloat(row[4], 64)
 		created_at, _ := time.Parse(format, row[5])
 
-		*v.(*[]TransactionItem) = append(*v.(*[]TransactionItem), TransactionItem{
+		*v = append(*v, TransactionItem{
 			transaction_id: row[0],
 			item_id:        item_id,
 			quantity:       quantity,
@@ -102,7 +108,7 @@ func addRowToData(v interface{}, row []string) {
 		user_id, _ := strconv.Atoi(row[0])
 		registered_at, _ := time.Parse(format, row[3])
 
-		*v.(*[]User) = append(*v.(*[]User), User{
+		*v = append(*v, User{
 			user_id:       user_id,
 			gender:        row[1],
 			birthdate:     row[2],
@@ -113,7 +119,7 @@ func addRowToData(v interface{}, row []string) {
 		price, _ := strconv.ParseFloat(row[3], 64)
 		is_seasonal, _ := strconv.ParseBool(row[4])
 
-		*v.(*[]MenuItem) = append(*v.(*[]MenuItem), MenuItem{
+		*v = append(*v, MenuItem{
 			item_id:        item_id,
 			item_name:      row[1],
 			category:       row[2],

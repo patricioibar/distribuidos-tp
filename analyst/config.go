@@ -1,4 +1,4 @@
-package analyst
+package main
 
 import (
 	"fmt"
@@ -11,16 +11,14 @@ const configFilePath = "config.json"
 
 // Config represents the application's configuration structure.
 type Config struct {
-	BatchSize             int    `json:"batch-size" mapstructure:"chunk-size"`
+	BatchSize             int    `json:"batch-size" mapstructure:"batch-size"`
 	CoffeeAnalyzerAddress string `json:"coffee-analyzer-address" mapstructure:"coffee-analyzer-address"`
-	DatasetPath           string `json:"dataset-path" mapstructure:"dataset-path"`
 	LogLevel              string `json:"log-level" mapstructure:"log-level"`
 }
 
 var requiredFields = []string{
-	"chunk-size",
+	"batch-size",
 	"coffee-analyzer-address",
-	"dataset-path",
 }
 
 // field: default value
