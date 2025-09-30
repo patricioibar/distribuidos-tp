@@ -20,13 +20,9 @@ func SimulateProcessing(
 
 	sourceName := "input_" + testName
 	producer, _ := mw.NewProducer(sourceName, rabbitAddr)
-	for _, batch := range input {
-		data, _ := batch.Marshal()
-		producer.Send(data)
-	}
 
 	outputName := "output_" + testName
-	consumer, _ := mw.NewConsumer("output_queue_"+testName, outputName, rabbitAddr)
+	consumer, _ := mw.NewConsumer("test_consumer_"+testName, outputName, rabbitAddr)
 
 	var result []string
 	msgReceived := make(chan struct{}, expectedOutputBatches)
@@ -37,9 +33,16 @@ func SimulateProcessing(
 	}
 	consumer.StartConsuming(callback)
 	defer consumer.Close()
+
+	for _, batch := range input {
+		data, _ := batch.Marshal()
+		producer.Send(data)
+	}
+
 	for i := 0; i < expectedOutputBatches; i++ {
 		<-msgReceived
 	}
+
 	return result
 }
 

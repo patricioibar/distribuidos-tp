@@ -62,6 +62,22 @@ services:
     networks:
       - testing_net
 
+  tester:
+    image: aggregator-builder:latest
+    container_name: tester
+    build:
+      context: ../..
+      dockerfile: aggregator/Dockerfile
+      target: builder
+    command: ["go", "test", "-v", "-timeout", "5s", "-run", "^TestInputOutput$", "./aggregator/integration/integration_test.go"]
+    depends_on:
+      - aggregator1
+      - aggregator2
+      - reducer
+    networks:
+      - testing_net
+
+
 networks:
   testing_net:
     ipam:

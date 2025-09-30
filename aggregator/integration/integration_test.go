@@ -11,7 +11,7 @@ func TestInputOutput(t *testing.T) {
 
 	output := utils.SimulateProcessing(
 		"test1",
-		"amqp://guest:guest@localhost:5672/",
+		"amqp://guest:guest@rabbitmq:5672/",
 		[]ic.RowsBatch{
 			*ic.NewRowsBatch(
 				[]string{"id", "value", "category"},
