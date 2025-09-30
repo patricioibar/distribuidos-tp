@@ -3,29 +3,12 @@ package common
 import (
 	a "aggregator/common/aggFunctions"
 	"fmt"
-	"strings"
 
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 )
 
 const KeyPartsSeparator = "|"
 const AggFuncColSeparator = "_"
-
-func getAggregatedRowsFromGroupedData(groupedData *map[string][]a.Aggregation) *[][]interface{} {
-	var result [][]interface{}
-	for key, aggs := range *groupedData {
-		row := []interface{}{}
-		keyParts := getPartsFromKey(key, KeyPartsSeparator)
-		for _, part := range keyParts {
-			row = append(row, part)
-		}
-		for _, agg := range aggs {
-			row = append(row, agg.Result())
-		}
-		result = append(result, row)
-	}
-	return &result
-}
 
 func getAggColIndexes(config *Config, batch *ic.RowsBatch) map[string]int {
 	var aggColIndexes map[string]int = make(map[string]int)
@@ -41,16 +24,24 @@ func getAggColIndexes(config *Config, batch *ic.RowsBatch) map[string]int {
 }
 
 func getGroupByColIndexes(config *Config, batch *ic.RowsBatch) []int {
-	var groupByIndexes []int
-	for _, groupByCol := range config.GroupBy {
-		for i, colName := range batch.ColumnNames {
-			if colName == groupByCol {
-				groupByIndexes = append(groupByIndexes, i)
-				break
-			}
+	return getIndexes(config.GroupBy, batch.ColumnNames)
+}
+
+func getIndexes(colNames []string, allColNames []string) []int {
+	var indexes []int
+	for _, colName := range colNames {
+		indexes = append(indexes, getIndex(colName, allColNames))
+	}
+	return indexes
+}
+
+func getIndex(colName string, colNames []string) int {
+	for i, name := range colNames {
+		if name == colName {
+			return i
 		}
 	}
-	return groupByIndexes
+	return -1
 }
 
 func getGroupByKey(groupByIndexes []int, row []interface{}) string {
@@ -71,10 +62,6 @@ func joinParts(keyParts []string, separator string) string {
 		}
 	}
 	return key
-}
-
-func getPartsFromKey(key string, separator string) []string {
-	return strings.Split(key, separator)
 }
 
 func getBatchFromAggregatedRows(

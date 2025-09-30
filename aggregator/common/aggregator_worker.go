@@ -97,21 +97,21 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 		dataBatch := dr.RetainedData{
 			KeyColumns:   dataInfo.KeyColumns,
 			Aggregations: dataInfo.Aggregations,
-			Data:         make(map[string][]a.Aggregation),
+			Data:         make([][]interface{}, 0),
 		}
 
 		batchSize := aw.Config.BatchSize
 
 		i := 0
-		for key, aggs := range dataInfo.Data {
+		for _, row := range dataInfo.Data {
 			if i >= batchSize {
 				aw.sendDataBatch(dataBatch)
 
-				dataBatch.Data = make(map[string][]a.Aggregation)
+				dataBatch.Data = make([][]interface{}, 0)
 				i = 0
 			}
 
-			dataBatch.Data[key] = aggs
+			dataBatch.Data = append(dataBatch.Data, row)
 			i++
 		}
 
@@ -152,12 +152,11 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 }
 
 func (aw *AggregatorWorker) sendDataBatch(data dr.RetainedData) {
-	rows := getAggregatedRowsFromGroupedData(&data.Data)
 	batch := getBatchFromAggregatedRows(
 		data.KeyColumns,
 		data.Aggregations,
 		aw.Config.IsReducer,
-		rows,
+		&data.Data,
 	)
 
 	batchBytes, err := batch.Marshal()
