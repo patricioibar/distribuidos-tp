@@ -1,7 +1,6 @@
 package communication
 
 import (
-	"encoding/binary"
 	"net"
 )
 
@@ -19,23 +18,24 @@ func (s *Socket) Connect(address string) error {
 	return nil
 }
 
-func (s *Socket) SendChunksCount(numChunks int) error {
-	if s.conn == nil {
-		return net.ErrClosed
-	}
-	var buf [4]byte
-	binary.BigEndian.PutUint32(buf[:], uint32(numChunks))
-	total := 0
-	for total < len(buf) {
-		n, err := s.conn.Write(buf[total:])
-		if err != nil {
-			return err
+/*
+	func (s *Socket) SendChunksCount(numChunks int) error {
+		if s.conn == nil {
+			return net.ErrClosed
 		}
-		total += n
+		var buf [4]byte
+		binary.BigEndian.PutUint32(buf[:], uint32(numChunks))
+		total := 0
+		for total < len(buf) {
+			n, err := s.conn.Write(buf[total:])
+			if err != nil {
+				return err
+			}
+			total += n
+		}
+		return nil
 	}
-	return nil
-}
-
+*/
 func (s *Socket) SendBatch(data []byte) error {
 	if s.conn == nil {
 		return net.ErrClosed
@@ -52,7 +52,23 @@ func (s *Socket) SendBatch(data []byte) error {
 	}
 	return nil
 }
+func (s *Socket) ReadBatch(size int) ([]byte, error) {
+	if s.conn == nil {
+		return nil, net.ErrClosed
+	}
+	buf := make([]byte, size)
+	total := 0
+	for total < size {
+		n, err := s.conn.Read(buf[total:])
+		if err != nil {
+			return nil, err
+		}
+		total += n
+	}
+	return buf, nil
+}
 
+/*
 func (s *Socket) RecvAck() (uint32, error) {
 	if s.conn == nil {
 		return 0, net.ErrClosed
@@ -69,7 +85,7 @@ func (s *Socket) RecvAck() (uint32, error) {
 	seq := binary.BigEndian.Uint32(buf[:])
 	return seq, nil
 }
-
+*/
 // Close closes the connection and listener if present.
 func (s *Socket) Close() error {
 	if s.conn != nil {

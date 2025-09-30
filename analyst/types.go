@@ -1,45 +1,49 @@
 package main
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Transaction struct {
-	transaction_id    string
-	store_id          int
-	payment_method_id int
-	voucher_id        float64
-	user_id           float64
-	original_amount   float64
-	discount_applied  float64
-	final_amount      float64
-	created_at        time.Time
+	Transaction_id    string
+	Store_id          int
+	Payment_method_id int
+	Voucher_id        float64
+	User_id           float64
+	Original_amount   float64
+	Discount_applied  float64
+	Final_amount      float64
+	Created_at        time.Time
 }
 
 type TransactionItem struct {
-	transaction_id string
-	item_id        int
-	quantity       int
-	unit_price     float64
-	subtotal       float64
-	created_at     time.Time
+	Transaction_id string
+	Item_id        int
+	Quantity       int
+	Unit_price     float64
+	Subtotal       float64
+	Created_at     time.Time
 }
 
 type User struct {
-	user_id       int
-	gender        string
-	birthdate     string //quizas deberia ser time.Time, formato YYYY-MM-DD
-	registered_at time.Time
+	User_id       int
+	Gender        string
+	Birthdate     string //quizas deberia ser time.Time, formato YYYY-MM-DD
+	Registered_at time.Time
 }
 
 type MenuItem struct {
-	item_id        int
-	item_name      string
-	category       string
-	price          float64
-	is_seasonal    bool
-	available_from string
-	available_to   string
+	Item_id        int
+	Item_name      string
+	Category       string
+	Price          float64
+	Is_seasonal    bool
+	Available_from string
+	Available_to   string
 }
 
+/*
 type FileType int
 
 const (
@@ -48,3 +52,9 @@ const (
 	Users
 	MenuItems
 )
+*/
+
+type Message struct {
+	Type string
+	Data json.RawMessage
+}

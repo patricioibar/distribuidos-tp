@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -36,17 +37,21 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 		reader := Reader{FilePath: filepath.Join(dir, file.Name()), BatchSize: s.BatchSize}
 		batchCount := 0
 		end := false
-
+		var messageType string
 		for {
 			switch v.(type) {
 			case *[]TransactionItem:
 				v = &[]TransactionItem{}
+				messageType = "TransactionItem"
 			case *[]User:
 				v = &[]User{}
+				messageType = "User"
 			case *[]MenuItem:
 				v = &[]MenuItem{}
+				messageType = "MenuItem"
 			case *[]Transaction:
 				v = &[]Transaction{}
+				messageType = "Transaction"
 			}
 			fmt.Println(batchCount)
 
@@ -60,13 +65,27 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 				end = true
 			}
 
-			fmt.Printf("Unmarshalled data: %+v\n", v)
-
-			/*data, err := json.Marshal(v)
+			data, err := json.Marshal(v)
 			if err != nil {
 				log.Fatalf("Failed to send batch: %v", err)
 				return
-			}*/
+			}
+
+			message := Message{
+				Type: messageType,
+				Data: data,
+			}
+
+			fmt.Printf("Unmarshalled data: %+v\n", message)
+
+			data, err = json.Marshal(message)
+			if err != nil {
+				log.Fatalf("Failed to marshal batch: %v", err)
+				return
+			}
+
+			fmt.Printf("Marshalled data: %+v\n", data)
+			fmt.Printf("Data len: %d\n", len(data))
 
 			//fmt.Printf("Marshalled data: %+v\n", data)
 
