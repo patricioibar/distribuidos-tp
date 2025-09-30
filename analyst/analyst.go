@@ -47,10 +47,10 @@ func main() {
 	}
 
 	menuItems := []MenuItem{}
-	serverConn.sendDataset("./menu_items.csv", &menuItems)
+	serverConn.sendDataset("./dataset/menu_items", &menuItems)
 
 	users := []User{}
-	serverConn.sendDataset("./users.csv", &users)
+	serverConn.sendDataset("./dataset/users", &users)
 
 	//go serverConn.sendDataset("transactions.csv", Transactions)
 }
