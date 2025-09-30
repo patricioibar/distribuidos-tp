@@ -14,27 +14,27 @@ func TestInputOutput(t *testing.T) {
 		"amqp://guest:guest@localhost:5672/",
 		[]ic.RowsBatch{
 			*ic.NewRowsBatch(
-				[]string{"id", "value"},
+				[]string{"id", "value", "category"},
 				[][]interface{}{
-					{"A", 10},
-					{"B", 20},
-					{"A", 30},
+					{"A", 10, "cat1"},
+					{"B", 20, "cat2"},
+					{"A", 30, "cat1"},
 				},
 			),
 			*ic.NewRowsBatch(
-				[]string{"id", "value"},
+				[]string{"id", "value", "category"},
 				[][]interface{}{
-					{"A", "5"},
-					{"B", 15},
-					{"C", 25},
+					{"A", "5", "cat1"},
+					{"B", 15, "cat2"},
+					{"C", 25, "cat1"},
 				},
 			),
 			*ic.NewRowsBatch(
-				[]string{"id", "value"},
+				[]string{"id", "value", "category"},
 				[][]interface{}{
-					{"C", 2},
-					{"B", 5},
-					{"A", 15},
+					{"C", 2, "cat1"},
+					{"B", 5, "cat2"},
+					{"A", 15, "cat1"},
 				},
 			),
 			*ic.NewEndSignal(),

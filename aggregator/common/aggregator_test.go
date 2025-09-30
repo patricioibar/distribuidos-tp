@@ -2,6 +2,7 @@ package common_test
 
 import (
 	"aggregator/common"
+	agf "aggregator/common/aggFunctions"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -93,7 +94,7 @@ func TestSumAggregatorWorker(t *testing.T) {
 	config := &common.Config{
 		WorkerId:     "worker-1",
 		GroupBy:      []string{"category"},
-		Aggregations: []common.AggConfig{{Col: "value", Func: "sum"}},
+		Aggregations: []agf.AggConfig{{Col: "value", Func: "sum"}},
 		BatchSize:    10,
 		WorkersCount: 1,
 	}
@@ -146,7 +147,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 	config := &common.Config{
 		WorkerId:     "worker-1",
 		GroupBy:      []string{"category"},
-		Aggregations: []common.AggConfig{{Col: "value", Func: "count"}},
+		Aggregations: []agf.AggConfig{{Col: "value", Func: "count"}},
 		BatchSize:    10,
 		WorkersCount: 1,
 	}
@@ -226,7 +227,7 @@ func newWorkers(config *common.Config, workersCount int) (*StubConsumer, *StubPr
 func TestTwoAggregatorWorkers(t *testing.T) {
 	config1 := &common.Config{
 		GroupBy: []string{"category"},
-		Aggregations: []common.AggConfig{
+		Aggregations: []agf.AggConfig{
 			{Col: "value", Func: "count"},
 			{Col: "value", Func: "sum"}},
 		BatchSize: 10,

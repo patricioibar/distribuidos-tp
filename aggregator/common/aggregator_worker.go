@@ -2,6 +2,7 @@ package common
 
 import (
 	a "aggregator/common/aggFunctions"
+	dr "aggregator/common/dataRetainer"
 
 	"github.com/op/go-logging"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -11,22 +12,24 @@ import (
 var log = logging.MustGetLogger("log")
 
 type AggregatorWorker struct {
-	Config      *Config
-	input       mw.MessageMiddleware
-	output      mw.MessageMiddleware
-	callback    mw.OnMessageCallback
-	reducedData map[string][]a.Aggregation
-	closeChan   chan struct{}
+	Config       *Config
+	input        mw.MessageMiddleware
+	output       mw.MessageMiddleware
+	callback     mw.OnMessageCallback
+	reducedData  map[string][]a.Aggregation
+	dataRetainer dr.DataRetainer
+	closeChan    chan struct{}
 }
 
 func NewAggregatorWorker(config *Config, input mw.MessageMiddleware, output mw.MessageMiddleware) *AggregatorWorker {
 	reducedData := make(map[string][]a.Aggregation)
 	aggregator := AggregatorWorker{
-		Config:      config,
-		input:       input,
-		output:      output,
-		reducedData: reducedData,
-		closeChan:   make(chan struct{}),
+		Config:       config,
+		input:        input,
+		output:       output,
+		reducedData:  reducedData,
+		dataRetainer: dr.NewDataRetainer(config.Retainings),
+		closeChan:    make(chan struct{}),
 	}
 
 	aggregator.callback = aggregator.messageCallback()
@@ -71,11 +74,51 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 		done <- nil
 
 		if batch.IsEndSignal() {
-			aw.SendReducedData()
+			retainedData := aw.dataRetainer.RetainData(
+				aw.Config.GroupBy,
+				aw.Config.Aggregations,
+				aw.reducedData,
+			)
+			aw.sendRetainedData(retainedData)
 			aw.PropagateEndSignal(batch)
 			aw.Close()
 		}
 
+	}
+}
+
+func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData) {
+	for _, dataInfo := range differentFormats {
+		log.Debugf(
+			"Worker %s sending reduced data, total groups: %d",
+			aw.Config.WorkerId, len(dataInfo.Data),
+		)
+
+		dataBatch := dr.RetainedData{
+			KeyColumns:   dataInfo.KeyColumns,
+			Aggregations: dataInfo.Aggregations,
+			Data:         make(map[string][]a.Aggregation),
+		}
+
+		batchSize := aw.Config.BatchSize
+
+		i := 0
+		for key, aggs := range dataInfo.Data {
+			if i >= batchSize {
+				aw.sendDataBatch(dataBatch)
+
+				dataBatch.Data = make(map[string][]a.Aggregation)
+				i = 0
+			}
+
+			dataBatch.Data[key] = aggs
+			i++
+		}
+
+		if len(dataBatch.Data) > 0 {
+			aw.sendDataBatch(dataBatch)
+
+		}
 	}
 }
 
@@ -108,43 +151,22 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 	}
 }
 
-func (aw *AggregatorWorker) SendReducedData() {
-	log.Debugf("Worker %s sending reduced data, total groups: %d", aw.Config.WorkerId, len(aw.reducedData))
+func (aw *AggregatorWorker) sendDataBatch(data dr.RetainedData) {
+	rows := getAggregatedRowsFromGroupedData(&data.Data)
+	batch := getBatchFromAggregatedRows(
+		data.KeyColumns,
+		data.Aggregations,
+		aw.Config.IsReducer,
+		rows,
+	)
 
-	batchSize := aw.Config.BatchSize
-
-	reducedDataBatch := make(map[string][]a.Aggregation)
-	i := 0
-	for key, aggs := range aw.reducedData {
-		if i >= batchSize {
-			aw.sendReducedDataBatch(reducedDataBatch)
-
-			reducedDataBatch = make(map[string][]a.Aggregation)
-			i = 0
-		}
-
-		reducedDataBatch[key] = aggs
-		i++
-	}
-
-	if len(reducedDataBatch) > 0 {
-		aw.sendReducedDataBatch(reducedDataBatch)
-
-	}
-
-}
-
-func (aw *AggregatorWorker) sendReducedDataBatch(groupedData map[string][]a.Aggregation) {
-	rows := getAggregatedRowsFromGroupedData(&groupedData)
-	batch := getBatchFromAggregatedRows(aw.Config, rows)
-
-	data, err := batch.Marshal()
+	batchBytes, err := batch.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal batch: %v", err)
 	}
 
-	log.Debugf("Sending data batch: %v", string(data))
-	if err := aw.output.Send(data); err != nil {
+	log.Debugf("Sending data batch: %v", string(batchBytes))
+	if err := aw.output.Send(batchBytes); err != nil {
 		log.Errorf("Failed to send message: %v", err)
 	}
 }

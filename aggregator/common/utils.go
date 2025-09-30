@@ -8,10 +8,17 @@ import (
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 )
 
+const KeyPartsSeparator = "|"
+const AggFuncColSeparator = "_"
+
 func getAggregatedRowsFromGroupedData(groupedData *map[string][]a.Aggregation) *[][]interface{} {
 	var result [][]interface{}
 	for key, aggs := range *groupedData {
-		row := []interface{}{key}
+		row := []interface{}{}
+		keyParts := getPartsFromKey(key, KeyPartsSeparator)
+		for _, part := range keyParts {
+			row = append(row, part)
+		}
 		for _, agg := range aggs {
 			row = append(row, agg.Result())
 		}
@@ -52,7 +59,7 @@ func getGroupByKey(groupByIndexes []int, row []interface{}) string {
 		stringKey := fmt.Sprintf("%v", row[idx])
 		keyParts = append(keyParts, stringKey)
 	}
-	return joinParts(keyParts, "-")
+	return joinParts(keyParts, KeyPartsSeparator)
 }
 
 func joinParts(keyParts []string, separator string) string {
@@ -66,18 +73,26 @@ func joinParts(keyParts []string, separator string) string {
 	return key
 }
 
-func getBatchFromAggregatedRows(config *Config, aggregatedRows *[][]interface{}) *ic.RowsBatch {
+func getPartsFromKey(key string, separator string) []string {
+	return strings.Split(key, separator)
+}
+
+func getBatchFromAggregatedRows(
+	groupByColNames []string,
+	aggregations []a.AggConfig,
+	isReducer bool,
+	aggregatedRows *[][]interface{},
+) *ic.RowsBatch {
 	var aggregatedColumnNames []string
 
-	groupedColName := joinParts(config.GroupBy, "-")
-	aggregatedColumnNames = append(aggregatedColumnNames, groupedColName)
+	aggregatedColumnNames = append(aggregatedColumnNames, groupByColNames...)
 
-	for _, agg := range config.Aggregations {
+	for _, agg := range aggregations {
 		var aggColName string
-		if config.WorkerId != "" && strings.Contains(config.WorkerId, "reducer") {
+		if isReducer {
 			aggColName = agg.Col
 		} else {
-			aggColName = joinParts([]string{agg.Func, agg.Col}, "_")
+			aggColName = joinParts([]string{agg.Func, agg.Col}, AggFuncColSeparator)
 		}
 		aggregatedColumnNames = append(aggregatedColumnNames, aggColName)
 	}

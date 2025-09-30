@@ -26,7 +26,7 @@ func SimulateProcessing(
 	}
 
 	outputName := "output_" + testName
-	consumer, _ := mw.NewConsumer("test_consumer_"+testName, outputName, rabbitAddr)
+	consumer, _ := mw.NewConsumer("output_queue_"+testName, outputName, rabbitAddr)
 
 	var result []string
 	msgReceived := make(chan struct{}, expectedOutputBatches)

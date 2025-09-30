@@ -1,6 +1,8 @@
 package common
 
 import (
+	ag "aggregator/common/aggFunctions"
+	dr "aggregator/common/dataRetainer"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,25 +12,20 @@ import (
 
 const configFilePath = "config.json"
 
-// AggConfig represents a single aggregation configuration.
-type AggConfig struct {
-	Col  string `json:"col" mapstructure:"col"`
-	Func string `json:"func" mapstructure:"func"`
-}
-
 // Config represents the application's configuration structure.
 type Config struct {
-	WorkerId          string      `json:"worker-id" mapstructure:"worker-id"`
-	WorkersCount      int         `json:"workers-count" mapstructure:"workers-count"`
-	MiddlewareAddress string      `json:"middleware-address" mapstructure:"middleware-address"`
-	GroupBy           []string    `json:"group-by" mapstructure:"group-by"`
-	Aggregations      []AggConfig `json:"aggregations" mapstructure:"aggregations"`
-	QueryName         string      `json:"query-name" mapstructure:"query-name"`
-	InputName         string      `json:"input-name" mapstructure:"input-name"`
-	OutputName        string      `json:"output-name" mapstructure:"output-name"`
-	LogLevel          string      `json:"log-level" mapstructure:"log-level"`
-	BatchSize         int         `json:"output-batch-size" mapstructure:"output-batch-size"`
-	IsReducer         bool        `json:"is-reducer" mapstructure:"is-reducer"`
+	WorkerId          string         `json:"worker-id" mapstructure:"worker-id"`
+	WorkersCount      int            `json:"workers-count" mapstructure:"workers-count"`
+	MiddlewareAddress string         `json:"middleware-address" mapstructure:"middleware-address"`
+	GroupBy           []string       `json:"group-by" mapstructure:"group-by"`
+	Aggregations      []ag.AggConfig `json:"aggregations" mapstructure:"aggregations"`
+	QueryName         string         `json:"query-name" mapstructure:"query-name"`
+	InputName         string         `json:"input-name" mapstructure:"input-name"`
+	OutputName        string         `json:"output-name" mapstructure:"output-name"`
+	LogLevel          string         `json:"log-level" mapstructure:"log-level"`
+	BatchSize         int            `json:"output-batch-size" mapstructure:"output-batch-size"`
+	IsReducer         bool           `json:"is-reducer" mapstructure:"is-reducer"`
+	Retainings        []dr.Retaining `json:"top-retains" mapstructure:"top-retains"`
 }
 
 var requiredFields = []string{
@@ -77,11 +74,19 @@ func InitConfig() (*Config, error) {
 
 	// Parse complex fields from JSON env vars
 	if s := v.GetString("aggregations"); s != "" {
-		var aggs []AggConfig
+		var aggs []ag.AggConfig
 		if err := json.Unmarshal([]byte(s), &aggs); err != nil {
 			return nil, fmt.Errorf("could not parse aggregations JSON: %w", err)
 		}
 		v.Set("aggregations", aggs)
+	}
+
+	if s := v.GetString("top-retains"); s != "" {
+		var topRetains []dr.Retaining
+		if err := json.Unmarshal([]byte(s), &topRetains); err != nil {
+			return nil, fmt.Errorf("could not parse top-retains JSON: %w", err)
+		}
+		v.Set("top-retains", topRetains)
 	}
 
 	if s := v.GetString("group-by"); s != "" {
