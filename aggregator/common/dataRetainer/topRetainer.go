@@ -104,7 +104,7 @@ func retainWithoutGrouping[V cmp.Ordered](
 
 	result := RetainedData{
 		KeyColumns:   groupByColumns,
-		Aggregations: []a.AggConfig{aggregations[valueIdx]},
+		Aggregations: aggregations,
 		Data:         make([][]interface{}, 0),
 	}
 
@@ -147,7 +147,7 @@ func retainGrouping[V cmp.Ordered](
 
 	result := RetainedData{
 		KeyColumns:   groupByColumns,
-		Aggregations: []a.AggConfig{aggregations[valueIdx]},
+		Aggregations: aggregations,
 		Data:         make([][]interface{}, 0),
 	}
 

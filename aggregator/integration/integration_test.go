@@ -50,3 +50,54 @@ func TestInputOutput(t *testing.T) {
 
 	utils.AssertIsEndSignal(t, output[1])
 }
+
+func TestBestSellingProducts(t *testing.T) {
+
+	output := utils.SimulateProcessing(
+		"test3",
+		"amqp://guest:guest@rabbitmq:5672/",
+		[]ic.RowsBatch{
+			*ic.NewRowsBatch(
+				[]string{"year_month", "item_name", "profit"},
+				[][]interface{}{
+					{"2025-01", "americano", 10.0},
+					{"2025-01", "boba", 16.0},
+					{"2025-01", "lagrima", 20.1},
+					{"2025-02", "cortado", 1.0},
+				},
+			),
+			*ic.NewRowsBatch(
+				[]string{"year_month", "item_name", "profit"},
+				[][]interface{}{
+					{"2025-02", "cortado", 1.0},
+					{"2025-02", "cortado", 1.0},
+					{"2025-02", "cortado", 1.0},
+					{"2025-02", "boba", 160.0},
+					{"2025-02", "lagrima", 20.0},
+					{"2025-02", "lagrima", 20.0},
+				},
+			),
+			*ic.NewRowsBatch(
+				[]string{"year_month", "item_name", "profit"},
+				[][]interface{}{
+					{"2025-01", "americano", 10.0},
+				},
+			),
+			*ic.NewEndSignal(),
+		},
+		3,
+	)
+
+	utils.AssertBatchesMatch(
+		t,
+		`{"column_names":["year_month","item_name","sum_profit","count_profit"],"rows":[["2025-01","americano",20,2],["2025-02","cortado",4,4]]}`,
+		output[0],
+	)
+	utils.AssertBatchesMatch(
+		t,
+		`{"column_names":["year_month","item_name","sum_profit","count_profit"],"rows":[["2025-01","lagrima",20.1,1],["2025-02","boba",160,1]]}`,
+		output[1],
+	)
+
+	utils.AssertIsEndSignal(t, output[2])
+}

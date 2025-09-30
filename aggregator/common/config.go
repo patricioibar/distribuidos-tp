@@ -25,7 +25,7 @@ type Config struct {
 	LogLevel          string         `json:"log-level" mapstructure:"log-level"`
 	BatchSize         int            `json:"output-batch-size" mapstructure:"output-batch-size"`
 	IsReducer         bool           `json:"is-reducer" mapstructure:"is-reducer"`
-	Retainings        []dr.Retaining `json:"top-retains" mapstructure:"top-retains"`
+	Retainings        []dr.Retaining `json:"retainings" mapstructure:"retainings"`
 }
 
 var requiredFields = []string{
@@ -81,12 +81,12 @@ func InitConfig() (*Config, error) {
 		v.Set("aggregations", aggs)
 	}
 
-	if s := v.GetString("top-retains"); s != "" {
+	if s := v.GetString("retainings"); s != "" {
 		var topRetains []dr.Retaining
 		if err := json.Unmarshal([]byte(s), &topRetains); err != nil {
-			return nil, fmt.Errorf("could not parse top-retains JSON: %w", err)
+			return nil, fmt.Errorf("could not parse retainings JSON: %w", err)
 		}
-		v.Set("top-retains", topRetains)
+		v.Set("retainings", topRetains)
 	}
 
 	if s := v.GetString("group-by"); s != "" {
