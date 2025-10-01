@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"communication"
 )
 
 type Reader struct {
@@ -68,7 +70,7 @@ func addRowToData(v interface{}, row []string) {
 	format := "2006-01-02 15:04:05"
 
 	switch v := v.(type) {
-	case *[]Transaction:
+	case *[]communication.Transaction:
 		store_id, _ := strconv.Atoi(row[1])
 		payment_method_id, _ := strconv.Atoi(row[2])
 		voucher_id, _ := strconv.ParseFloat(row[3], 64)
@@ -78,55 +80,55 @@ func addRowToData(v interface{}, row []string) {
 		final_amount, _ := strconv.ParseFloat(row[7], 64)
 		created_at, _ := time.Parse(format, row[8])
 
-		*v = append(*v, Transaction{
-			transaction_id:    row[0],
-			store_id:          store_id,
-			payment_method_id: payment_method_id,
-			voucher_id:        voucher_id,
-			user_id:           user_id,
-			original_amount:   original_amount,
-			discount_applied:  discount_applied,
-			final_amount:      final_amount,
-			created_at:        created_at,
+		*v = append(*v, communication.Transaction{
+			Transaction_id:    row[0],
+			Store_id:          store_id,
+			Payment_method_id: payment_method_id,
+			Voucher_id:        voucher_id,
+			User_id:           user_id,
+			Original_amount:   original_amount,
+			Discount_applied:  discount_applied,
+			Final_amount:      final_amount,
+			Created_at:        created_at,
 		})
-	case *[]TransactionItem:
+	case *[]communication.TransactionItem:
 		item_id, _ := strconv.Atoi(row[1])
 		quantity, _ := strconv.Atoi(row[2])
 		unit_price, _ := strconv.ParseFloat(row[3], 64)
 		subtotal, _ := strconv.ParseFloat(row[4], 64)
 		created_at, _ := time.Parse(format, row[5])
 
-		*v = append(*v, TransactionItem{
-			transaction_id: row[0],
-			item_id:        item_id,
-			quantity:       quantity,
-			unit_price:     unit_price,
-			subtotal:       subtotal,
-			created_at:     created_at,
+		*v = append(*v, communication.TransactionItem{
+			Transaction_id: row[0],
+			Item_id:        item_id,
+			Quantity:       quantity,
+			Unit_price:     unit_price,
+			Subtotal:       subtotal,
+			Created_at:     created_at,
 		})
-	case *[]User:
+	case *[]communication.User:
 		user_id, _ := strconv.Atoi(row[0])
 		registered_at, _ := time.Parse(format, row[3])
 
-		*v = append(*v, User{
-			user_id:       user_id,
-			gender:        row[1],
-			birthdate:     row[2],
-			registered_at: registered_at,
+		*v = append(*v, communication.User{
+			User_id:       user_id,
+			Gender:        row[1],
+			Birthdate:     row[2],
+			Registered_at: registered_at,
 		})
-	case *[]MenuItem:
+	case *[]communication.MenuItem:
 		item_id, _ := strconv.Atoi(row[0])
 		price, _ := strconv.ParseFloat(row[3], 64)
 		is_seasonal, _ := strconv.ParseBool(row[4])
 
-		*v = append(*v, MenuItem{
-			item_id:        item_id,
-			item_name:      row[1],
-			category:       row[2],
-			price:          price,
-			is_seasonal:    is_seasonal,
-			available_from: row[5],
-			available_to:   row[6],
+		*v = append(*v, communication.MenuItem{
+			Item_id:        item_id,
+			Item_name:      row[1],
+			Category:       row[2],
+			Price:          price,
+			Is_seasonal:    is_seasonal,
+			Available_from: row[5],
+			Available_to:   row[6],
 		})
 	}
 }

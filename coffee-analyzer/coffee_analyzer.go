@@ -4,8 +4,6 @@ import (
 	"os"
 
 	"github.com/op/go-logging"
-
-	"communication"
 )
 
 var log = logging.MustGetLogger("log")
@@ -43,16 +41,10 @@ func main() {
 		log.Criticalf("%s", err)
 	}
 
-	serverConn := ServerConnection{
-		BatchSize:             config.BatchSize,
-		CoffeeAnalyzerAddress: config.CoffeeAnalyzerAddress,
+	userConn := UserConnection{
+		Address: config.Address,
 	}
 
-	menuItems := []communication.MenuItem{}
-	serverConn.sendDataset("./dataset/menu_items", &menuItems)
+	userConn.Start()
 
-	users := []communication.User{}
-	serverConn.sendDataset("./dataset/users", &users)
-
-	//go serverConn.sendDataset("transactions.csv", Transactions)
 }

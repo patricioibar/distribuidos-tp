@@ -1,6 +1,8 @@
 package main
 
 import (
+	"communication"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -13,14 +15,14 @@ type ServerConnection struct {
 }
 
 func (s *ServerConnection) sendDataset(dir string, v interface{}) {
-	/*socket := communication.Socket{}
+	socket := communication.Socket{}
 
 	err := socket.Connect(s.CoffeeAnalyzerAddress)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 		return
 	}
-	defer socket.Close()*/
+	defer socket.Close()
 
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -36,17 +38,21 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 		reader := Reader{FilePath: filepath.Join(dir, file.Name()), BatchSize: s.BatchSize}
 		batchCount := 0
 		end := false
-
+		var messageType string
 		for {
 			switch v.(type) {
-			case *[]TransactionItem:
-				v = &[]TransactionItem{}
-			case *[]User:
-				v = &[]User{}
-			case *[]MenuItem:
-				v = &[]MenuItem{}
-			case *[]Transaction:
-				v = &[]Transaction{}
+			case *[]communication.TransactionItem:
+				v = &[]communication.TransactionItem{}
+				messageType = "TransactionItem"
+			case *[]communication.User:
+				v = &[]communication.User{}
+				messageType = "User"
+			case *[]communication.MenuItem:
+				v = &[]communication.MenuItem{}
+				messageType = "MenuItem"
+			case *[]communication.Transaction:
+				v = &[]communication.Transaction{}
+				messageType = "Transaction"
 			}
 			fmt.Println(batchCount)
 
@@ -60,21 +66,35 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 				end = true
 			}
 
-			fmt.Printf("Unmarshalled data: %+v\n", v)
-
-			/*data, err := json.Marshal(v)
+			data, err := json.Marshal(v)
 			if err != nil {
 				log.Fatalf("Failed to send batch: %v", err)
 				return
-			}*/
+			}
+
+			message := communication.Message{
+				Type: messageType,
+				Data: data,
+			}
+
+			fmt.Printf("Unmarshalled data: %+v\n", message)
+
+			data, err = json.Marshal(message)
+			if err != nil {
+				log.Fatalf("Failed to marshal batch: %v", err)
+				return
+			}
+
+			fmt.Printf("Marshalled data: %+v\n", data)
+			fmt.Printf("Data len: %d\n", len(data))
 
 			//fmt.Printf("Marshalled data: %+v\n", data)
 
-			/*err = socket.SendBatch(data)
+			err = socket.SendBatch(data)
 			if err != nil {
 				log.Fatalf("Failed to send batch: %v", err)
 				return
-			}*/
+			}
 
 			log.Infof("Batch sent successfully")
 			batchCount += s.BatchSize
