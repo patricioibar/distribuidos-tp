@@ -1,4 +1,4 @@
-package main
+package communication
 
 import (
 	"encoding/json"
@@ -42,17 +42,6 @@ type MenuItem struct {
 	Available_from string
 	Available_to   string
 }
-
-/*
-type FileType int
-
-const (
-	Transactions FileType = iota
-	TransactionItems
-	Users
-	MenuItems
-)
-*/
 
 type Message struct {
 	Type string

@@ -1,8 +1,29 @@
 package communication
 
 import (
+	"encoding/binary"
 	"net"
 )
+
+func (s *Socket) BindAndListen(address string) error {
+	ln, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
+	s.listener = ln
+	return nil
+}
+
+func (s *Socket) Accept() (*Socket, error) {
+	if s.listener == nil {
+		return nil, net.ErrClosed
+	}
+	conn, err := s.listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &Socket{conn: conn}, nil
+}
 
 type Socket struct {
 	conn     net.Conn
@@ -40,9 +61,10 @@ func (s *Socket) SendBatch(data []byte) error {
 	if s.conn == nil {
 		return net.ErrClosed
 	}
+	dataLen := len(data)
+	binary.Write(s.conn, binary.BigEndian, uint32(dataLen))
 
 	total_sent := 0
-	dataLen := len(data)
 	for total_sent < dataLen {
 		n, err := s.conn.Write(data[total_sent:])
 		if err != nil {
@@ -52,11 +74,19 @@ func (s *Socket) SendBatch(data []byte) error {
 	}
 	return nil
 }
-func (s *Socket) ReadBatch(size int) ([]byte, error) {
+func (s *Socket) ReadBatch() ([]byte, error) {
 	if s.conn == nil {
 		return nil, net.ErrClosed
 	}
+
+	var dataLen uint32
+	err := binary.Read(s.conn, binary.BigEndian, &dataLen)
+	if err != nil {
+		return nil, err
+	}
+	size := int(dataLen)
 	buf := make([]byte, size)
+
 	total := 0
 	for total < size {
 		n, err := s.conn.Read(buf[total:])

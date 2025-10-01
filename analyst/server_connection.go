@@ -1,6 +1,7 @@
 package main
 
 import (
+	"communication"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,14 +15,14 @@ type ServerConnection struct {
 }
 
 func (s *ServerConnection) sendDataset(dir string, v interface{}) {
-	/*socket := communication.Socket{}
+	socket := communication.Socket{}
 
 	err := socket.Connect(s.CoffeeAnalyzerAddress)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 		return
 	}
-	defer socket.Close()*/
+	defer socket.Close()
 
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -40,17 +41,17 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 		var messageType string
 		for {
 			switch v.(type) {
-			case *[]TransactionItem:
-				v = &[]TransactionItem{}
+			case *[]communication.TransactionItem:
+				v = &[]communication.TransactionItem{}
 				messageType = "TransactionItem"
-			case *[]User:
-				v = &[]User{}
+			case *[]communication.User:
+				v = &[]communication.User{}
 				messageType = "User"
-			case *[]MenuItem:
-				v = &[]MenuItem{}
+			case *[]communication.MenuItem:
+				v = &[]communication.MenuItem{}
 				messageType = "MenuItem"
-			case *[]Transaction:
-				v = &[]Transaction{}
+			case *[]communication.Transaction:
+				v = &[]communication.Transaction{}
 				messageType = "Transaction"
 			}
 			fmt.Println(batchCount)
@@ -71,7 +72,7 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 				return
 			}
 
-			message := Message{
+			message := communication.Message{
 				Type: messageType,
 				Data: data,
 			}
@@ -89,11 +90,11 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 
 			//fmt.Printf("Marshalled data: %+v\n", data)
 
-			/*err = socket.SendBatch(data)
+			err = socket.SendBatch(data)
 			if err != nil {
 				log.Fatalf("Failed to send batch: %v", err)
 				return
-			}*/
+			}
 
 			log.Infof("Batch sent successfully")
 			batchCount += s.BatchSize

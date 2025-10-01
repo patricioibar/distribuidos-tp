@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"communication"
 )
 
 type Reader struct {
@@ -68,7 +70,7 @@ func addRowToData(v interface{}, row []string) {
 	format := "2006-01-02 15:04:05"
 
 	switch v := v.(type) {
-	case *[]Transaction:
+	case *[]communication.Transaction:
 		store_id, _ := strconv.Atoi(row[1])
 		payment_method_id, _ := strconv.Atoi(row[2])
 		voucher_id, _ := strconv.ParseFloat(row[3], 64)
@@ -78,7 +80,7 @@ func addRowToData(v interface{}, row []string) {
 		final_amount, _ := strconv.ParseFloat(row[7], 64)
 		created_at, _ := time.Parse(format, row[8])
 
-		*v = append(*v, Transaction{
+		*v = append(*v, communication.Transaction{
 			Transaction_id:    row[0],
 			Store_id:          store_id,
 			Payment_method_id: payment_method_id,
@@ -89,14 +91,14 @@ func addRowToData(v interface{}, row []string) {
 			Final_amount:      final_amount,
 			Created_at:        created_at,
 		})
-	case *[]TransactionItem:
+	case *[]communication.TransactionItem:
 		item_id, _ := strconv.Atoi(row[1])
 		quantity, _ := strconv.Atoi(row[2])
 		unit_price, _ := strconv.ParseFloat(row[3], 64)
 		subtotal, _ := strconv.ParseFloat(row[4], 64)
 		created_at, _ := time.Parse(format, row[5])
 
-		*v = append(*v, TransactionItem{
+		*v = append(*v, communication.TransactionItem{
 			Transaction_id: row[0],
 			Item_id:        item_id,
 			Quantity:       quantity,
@@ -104,22 +106,22 @@ func addRowToData(v interface{}, row []string) {
 			Subtotal:       subtotal,
 			Created_at:     created_at,
 		})
-	case *[]User:
+	case *[]communication.User:
 		user_id, _ := strconv.Atoi(row[0])
 		registered_at, _ := time.Parse(format, row[3])
 
-		*v = append(*v, User{
+		*v = append(*v, communication.User{
 			User_id:       user_id,
 			Gender:        row[1],
 			Birthdate:     row[2],
 			Registered_at: registered_at,
 		})
-	case *[]MenuItem:
+	case *[]communication.MenuItem:
 		item_id, _ := strconv.Atoi(row[0])
 		price, _ := strconv.ParseFloat(row[3], 64)
 		is_seasonal, _ := strconv.ParseBool(row[4])
 
-		*v = append(*v, MenuItem{
+		*v = append(*v, communication.MenuItem{
 			Item_id:        item_id,
 			Item_name:      row[1],
 			Category:       row[2],
