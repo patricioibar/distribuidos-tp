@@ -85,25 +85,24 @@ func (jw *JoinerWorker) rightCallback() mw.OnMessageCallback {
 		}
 
 		if batch.IsEndSignal() {
+			jw.propagateRightEndSignal(batch)
 			jw.rightDone <- struct{}{}
 		}
 	}
 }
 
-func (jw *JoinerWorker) propagateEndSignal(batch *ic.RowsBatch, input mw.MessageMiddleware) {
+func (jw *JoinerWorker) propagateRightEndSignal(batch *ic.RowsBatch) {
 	log.Debugf("Worker %s done, propagating end signal", jw.Config.WorkerId)
 
 	batch.AddWorkerDone(jw.Config.WorkerId)
 
 	if len(batch.WorkersDone) == jw.Config.WorkersCount {
 		log.Debugf("All workers done")
-		endSignal, _ := ic.NewEndSignal().Marshal()
-		jw.output.Send(endSignal)
 		return
 	}
 
 	endSignal, _ := batch.Marshal()
-	input.Send(endSignal) // re-enqueue the end signal with updated workers done
+	jw.rightInput.Send(endSignal) // re-enqueue the end signal with updated workers done
 }
 
 func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
@@ -125,10 +124,26 @@ func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 
 		if batch.IsEndSignal() {
 			jw.sendJoinedResults()
-			jw.propagateEndSignal(batch, jw.leftInput)
+			jw.propagateLeftEndSignal(batch)
 			jw.Close()
 		}
 	}
+}
+
+func (jw *JoinerWorker) propagateLeftEndSignal(batch *ic.RowsBatch) {
+	log.Debugf("Worker %s done, propagating end signal", jw.Config.WorkerId)
+
+	batch.AddWorkerDone(jw.Config.WorkerId)
+
+	if len(batch.WorkersDone) == jw.Config.WorkersCount {
+		log.Debugf("All workers done")
+		endSignal, _ := ic.NewEndSignal().Marshal()
+		jw.output.Send(endSignal)
+		return
+	}
+
+	endSignal, _ := batch.Marshal()
+	jw.leftInput.Send(endSignal) // re-enqueue the end signal with updated workers done
 }
 
 func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatch) {
