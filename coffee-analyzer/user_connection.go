@@ -93,6 +93,11 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 		rowsBatchMarshaled, _ := rowsBatch.Marshal()
 		producer.Send(rowsBatchMarshaled)
 	}
+	endSignal := innercommunication.NewEndSignal()
+	endSignalMarshaled, _ := endSignal.Marshal()
+	producer.Send(endSignalMarshaled)
+	producer.Close()
+	log.Infof("Finished receiving table: %v", table)
 }
 
 func (ca *CoffeeAnalyzer) handleGetResponsesRequest(s *communication.Socket) {
