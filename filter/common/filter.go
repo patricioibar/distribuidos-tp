@@ -81,7 +81,6 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 				}
 			}
 			batchChan <- filteredBatch
-			done <- nil
 		}
 
 		if batch.IsEndSignal() {
