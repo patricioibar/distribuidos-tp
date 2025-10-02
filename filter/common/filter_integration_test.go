@@ -9,8 +9,8 @@ import (
 )
 
 func createTestTimestamp(year, month, day, hour, minute, second int) string {
-t := time.Date(year, time.Month(month), day, hour, minute, second, 0, time.UTC)
-return t.Format("2006-01-02 15:04:05")
+	t := time.Date(year, time.Month(month), day, hour, minute, second, 0, time.UTC)
+	return t.Format("2006-01-02 15:04:05")
 }
 
 func TestIntegrationParseTimestamp(t *testing.T) {
