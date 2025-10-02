@@ -1,7 +1,8 @@
 package responseparser
 
 import (
-	"communication"
+	c "communication"
+	"encoding/json"
 	"fmt"
 
 	"github.com/op/go-logging"
@@ -23,7 +24,7 @@ type QuerySink struct {
 }
 
 type ResponseParser struct {
-	socket     *communication.Socket
+	socket     *c.Socket
 	querySinks []QuerySink
 	queryDone  []chan struct{}
 }
@@ -71,7 +72,7 @@ func (rp *ResponseParser) callbackForQuery(i int) mw.OnMessageCallback {
 	return callback
 }
 
-func (rp *ResponseParser) Start(s *communication.Socket) {
+func (rp *ResponseParser) Start(s *c.Socket) {
 	rp.socket = s
 	for _, sink := range rp.querySinks {
 		sink.consumer.StartConsuming(sink.callback)
@@ -106,4 +107,21 @@ func genericRowsToStringRows(rows [][]interface{}) [][]string {
 		}
 	}
 	return stringRows
+}
+
+func (rp *ResponseParser) queryResultReceived(queryId int, queryIndex int) {
+	log.Infof("Query %d result received, sending EOF batch", queryId)
+	eofBatch := c.QueryResponseBatch{
+		QueryId: queryId,
+		EOF:     true,
+	}
+	data, err := json.Marshal(eofBatch)
+	if err != nil {
+		log.Errorf("Failed to marshal EOF response: %v", err)
+		return
+	}
+	if err := rp.socket.SendBatch(data); err != nil {
+		log.Errorf("Failed to send EOF batch: %v", err)
+	}
+	rp.queryDone[queryIndex] <- struct{}{}
 }

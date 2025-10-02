@@ -352,9 +352,207 @@ services:
       RIGHT_INPUT_NAME: "stores"
       LEFT_INPUT_NAME: "tpv-reducer_output"
       OUTPUT_NAME: "query3_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  # Query 4 Workers
+  
+  ## Aggregators
+  topuser-aggregator-1:
+    image: aggregator:latest
+    container_name: topuser-aggregator-1
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "topuser-aggregator-1"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"store_id\",\"user_id\"]"
+      AGGREGATIONS: "[{\"col\":\"transaction_id\",\"func\":\"count\"}]"
+      QUERY_NAME: "topuser"
+      INPUT_NAME: "filtered-transactions-yearhour"
+      OUTPUT_NAME: "topuser-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+  
+  topuser-aggregator-2:
+    image: aggregator:latest
+    container_name: topuser-aggregator-2
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "topuser-aggregator-2"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"store_id\",\"user_id\"]"
+      AGGREGATIONS: "[{\"col\":\"transaction_id\",\"func\":\"count\"}]"
+      QUERY_NAME: "topuser"
+      INPUT_NAME: "filtered-transactions-yearhour"
+      OUTPUT_NAME: "topuser-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  topuser-aggregator-3:
+    image: aggregator:latest
+    container_name: topuser-aggregator-3
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "topuser-aggregator-3"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"store_id\",\"user_id\"]"
+      AGGREGATIONS: "[{\"col\":\"transaction_id\",\"func\":\"count\"}]"
+      QUERY_NAME: "topuser"
+      INPUT_NAME: "filtered-transactions-yearhour"
+      OUTPUT_NAME: "topuser-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  ## Reducer
+  topuser-reducer:
+    image: aggregator:latest
+    container_name: topuser-reducer
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "topuser-reducer"
+      WORKERS_COUNT: 1
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"store_id\",\"user_id\"]"
+      AGGREGATIONS: "[{\"col\":\"sum_transaction_id\",\"func\":\"sum\"}]"
+      QUERY_NAME: "topuser"
+      INPUT_NAME: "topuser-reducer_input"
+      OUTPUT_NAME: "topuser-reducer_output"
+      LOG_LEVEL: "DEBUG"
+      RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"sum_transaction_id\",\"largest\":true}]"
+      OUTPUT_BATCH_SIZE: 3
+      IS_REDUCER: "true"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  ## Joiners
+  topuser-birthdate-joiner1:
+    image: joiner:latest
+    container_name: topuser-birthdate-joiner1
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "topuser-birthdate-joiner1"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "user_id"
+      QUERY_NAME: "topuser"
+      RIGHT_INPUT_NAME: "topuser-reducer_output"
+      LEFT_INPUT_NAME: "users"
+      OUTPUT_NAME: "topuser-birthdate-joiner_output"
+      LOG_LEVEL: "DEBUG"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"sum_transaction_id\"]"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  topuser-birthdate-joiner2:
+    image: joiner:latest
+    container_name: topuser-birthdate-joiner2
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "topuser-birthdate-joiner2"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "user_id"
+      QUERY_NAME: "topuser"
+      RIGHT_INPUT_NAME: "topuser-reducer_output"
+      LEFT_INPUT_NAME: "users"
+      OUTPUT_NAME: "topuser-birthdate-joiner_output"
+      LOG_LEVEL: "DEBUG"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"sum_transaction_id\"]"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  topuser-birthdate-joiner3:
+    image: joiner:latest
+    container_name: topuser-birthdate-joiner3
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "topuser-birthdate-joiner3"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "user_id"
+      QUERY_NAME: "topuser"
+      RIGHT_INPUT_NAME: "topuser-reducer_output"
+      LEFT_INPUT_NAME: "users"
+      OUTPUT_NAME: "topuser-birthdate-joiner_output"
+      LOG_LEVEL: "DEBUG"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"sum_transaction_id\"]"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  topuser-storename-joiner:
+    image: joiner:latest
+    container_name: topuser-storename-joiner
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "topuser-storename-joiner"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "store_id"
+      QUERY_NAME: "topuser"
+      RIGHT_INPUT_NAME: "topuser-birthdate-joiner_output"
+      LEFT_INPUT_NAME: "stores"
+      OUTPUT_NAME: "query4_sink"
+      LOG_LEVEL: "DEBUG"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"sum_transaction_id\"]"
     depends_on:
       rabbitmq:
         condition: service_healthy

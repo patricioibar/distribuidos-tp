@@ -21,9 +21,8 @@ func (rp *ResponseParser) parseQuery3Response() mw.OnMessageCallback {
 		}
 
 		if batch.IsEndSignal() {
-			log.Infof("Received end signal for query 3")
 			done <- nil
-			rp.queryDone[2] <- struct{}{}
+			rp.queryResultReceived(3, 2)
 			return
 		}
 

@@ -147,15 +147,26 @@ func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch, d
 			log.Errorf("Failed to write row to file %s: %v", fileName, err)
 		}
 	}
+	log.Infof("query %v firstBatch columns: %+v", queryId, firstBatch.Columns)
+	log.Infof("query %v firstBatch rows: %+v", queryId, firstBatch.Rows)
 
 	for batch := range responseChan {
+		if batch.Rows == nil {
+			continue
+		}
+		if batch.EOF {
+			break
+		}
 		for _, row := range batch.Rows {
 			if err := writer.Write(row); err != nil {
 				log.Errorf("Failed to write row to file %s: %v", fileName, err)
 			}
 		}
+		writer.Flush()
+		if err := writer.Error(); err != nil {
+			log.Errorf("Error flushing to file %s: %v", fileName, err)
+		}
 	}
-	writer.Flush()
 	file.Close()
 	close(done)
 	log.Infof("Finished writing responses for query %d to file %s", queryId, fileName)

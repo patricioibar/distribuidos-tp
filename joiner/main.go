@@ -53,7 +53,8 @@ func main() {
 	var output mw.MessageMiddleware
 
 	// Share same queue for left input (round-robin among workers)
-	leftInput, err = mw.NewConsumer(config.LeftInputName, config.LeftInputName, config.MiddlewareAddress)
+	leftName := config.LeftInputName + "-" + config.QueryName
+	leftInput, err = mw.NewConsumer(leftName, config.LeftInputName, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create input consumer: %v", err)
 	}

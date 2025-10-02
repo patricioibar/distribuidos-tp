@@ -22,6 +22,7 @@ type Config struct {
 	LogLevel          string   `json:"log-level" mapstructure:"log-level"`
 	BatchSize         int      `json:"output-batch-size" mapstructure:"output-batch-size"`
 	OutputColumns     []string `json:"output-columns" mapstructure:"output-columns"`
+	QueryName         string   `json:"query-name" mapstructure:"query-name"`
 }
 
 var requiredFields = []string{

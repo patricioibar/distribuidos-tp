@@ -3,6 +3,7 @@ package common
 import (
 	a "aggregator/common/aggFunctions"
 	dr "aggregator/common/dataRetainer"
+	"strings"
 
 	"github.com/op/go-logging"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -58,7 +59,7 @@ func (aw *AggregatorWorker) Close() {
 
 func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-		log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
+		// log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
 		if err != nil {
@@ -125,8 +126,19 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 
 	groupByIndexes := getGroupByColIndexes(aw.Config, batch)
-
+	for _, idx := range groupByIndexes {
+		if idx == -1 {
+			log.Errorf("One of the group by columns not found in batch columns: %v", batch.ColumnNames)
+			return
+		}
+	}
 	aggIndexes := getAggColIndexes(aw.Config, batch)
+	for _, idx := range aggIndexes {
+		if idx == -1 {
+			log.Errorf("One of the aggregation columns not found in batch columns: %v", batch.ColumnNames)
+			return
+		}
+	}
 
 	for _, row := range batch.Rows {
 		if len(row) != len(batch.ColumnNames) {
@@ -136,14 +148,7 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 		}
 
 		if aw.Config.DropNa {
-			hasNil := false
-			for _, idx := range groupByIndexes {
-				if row[idx] == nil {
-					hasNil = true
-					break
-				}
-			}
-			if hasNil {
+			if hasNil(groupByIndexes, row) || hasNil(aggIndexesToSlice(aggIndexes, aw.Config.Aggregations), row) {
 				continue
 			}
 		}
@@ -164,6 +169,32 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 	}
 }
 
+func aggIndexesToSlice(aggIndexes map[string]int, aggs []a.AggConfig) []int {
+	indexes := make([]int, len(aggs))
+	for i, agg := range aggs {
+		indexes[i] = aggIndexes[agg.Col]
+	}
+	return indexes
+}
+
+func hasNil(groupByIndexes []int, row []interface{}) bool {
+	hasNil := false
+	for _, idx := range groupByIndexes {
+		value := row[idx]
+		if value == nil {
+			hasNil = true
+			break
+		} else {
+			strValue, ok := value.(string)
+			if ok && strings.TrimSpace(strValue) == "" {
+				hasNil = true
+				break
+			}
+		}
+	}
+	return hasNil
+}
+
 func (aw *AggregatorWorker) sendDataBatch(data dr.RetainedData) {
 	batch := getBatchFromAggregatedRows(
 		data.KeyColumns,
@@ -177,7 +208,7 @@ func (aw *AggregatorWorker) sendDataBatch(data dr.RetainedData) {
 		log.Errorf("Failed to marshal batch: %v", err)
 	}
 
-	log.Debugf("Sending data batch: %v", string(batchBytes))
+	// log.Debugf("Sending data batch: %v", string(batchBytes))
 	if err := aw.output.Send(batchBytes); err != nil {
 		log.Errorf("Failed to send message: %v", err)
 	}

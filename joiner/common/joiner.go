@@ -54,6 +54,7 @@ func (jw *JoinerWorker) innerStart() {
 	jw.rightInput.StartConsuming(jw.rightCallback())
 	<-jw.rightDone
 	log.Debugf("%s received all right input, starting left input", jw.Config.WorkerId)
+	log.Debugf("Right cache: %v", jw.rightCache)
 	jw.leftInput.StartConsuming(jw.leftCallback())
 }
 
@@ -61,7 +62,6 @@ func (jw *JoinerWorker) rightCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		defer func() { done <- nil }()
 
-		log.Debugf("Worker %s received message: %s", jw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
 
@@ -93,8 +93,6 @@ func (jw *JoinerWorker) rightCallback() mw.OnMessageCallback {
 
 func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-
-		log.Debugf("Worker %s received message: %s", jw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
 
@@ -150,9 +148,17 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatch) {
 	}
 
 	for _, leftRow := range batch.Rows {
+		if leftRow == nil || len(leftRow) <= joinKeyIndexLeft {
+			log.Errorf("Invalid left row: %v", leftRow)
+			continue
+		}
 		leftKey := leftRow[joinKeyIndexLeft]
 
 		for _, rightRow := range jw.rightCache.Rows {
+			if rightRow == nil || len(rightRow) <= joinKeyIndexRight {
+				log.Errorf("Invalid right row: %v", rightRow)
+				continue
+			}
 			rightKey := rightRow[joinKeyIndexRight]
 
 			if leftKey == rightKey {
@@ -205,12 +211,10 @@ func (jw *JoinerWorker) sendJoinedResults() {
 	if len(currentBatch.Rows) > 0 {
 		jw.sendBatch(currentBatch)
 	}
-
-	jw.joinedRows = make([][]any, 0)
 }
 
 func (jw *JoinerWorker) sendBatch(batch *ic.RowsBatch) {
-	log.Debugf("Worker %s sending batch: %s", jw.Config.WorkerId, stringOrEmpty(batch))
+	log.Debugf("Worker %s sending batch of rows %d", jw.Config.WorkerId, len(batch.Rows))
 	data, err := batch.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal batch: %v", err)
