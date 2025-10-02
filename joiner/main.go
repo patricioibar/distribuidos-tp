@@ -1,4 +1,4 @@
-package joiner
+package main
 
 import (
 	"os"

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -64,6 +65,19 @@ func InitConfig() (*Config, error) {
 	for _, field := range requiredFields {
 		if !v.IsSet(field) {
 			return nil, fmt.Errorf("missing required config field: %s", field)
+		}
+	}
+
+	if s := v.GetString("output-columns"); s != "" {
+		var parsed []string
+		if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+			v.Set("output-columns", parsed)
+		} else {
+			parts := strings.Split(s, ",")
+			for i := range parts {
+				parts[i] = strings.TrimSpace(parts[i])
+			}
+			v.Set("output-columns", parts)
 		}
 	}
 

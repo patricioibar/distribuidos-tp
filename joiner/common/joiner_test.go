@@ -249,21 +249,21 @@ func TestJoinNoMatches(t *testing.T) {
 }
 
 func TestJoinMultipleBatches(t *testing.T) {
-	leftColumns := []string{"id", "name"}
+	leftColumns := []string{"name", "id"}
 	leftRows1 := [][]any{
-		{1, "Alice"},
-		{2, "Bob"},
+		{"Alice", 1},
+		{"Bob", 2},
 	}
 	leftRows2 := [][]any{
-		{3, "Charlie"},
-		{4, "Diana"},
+		{"Charlie", 3},
+		{"Diana", 4},
 	}
-	rightColumns := []string{"id", "department"}
+	rightColumns := []string{"id", "department", "trassh"}
 	rightRows := [][]any{
-		{1, "HR"},
-		{2, "Engineering"},
-		{3, "Marketing"},
-		{4, "Finance"},
+		{1, "HR", "Trash"},
+		{2, "Engineering", "Trash"},
+		{3, "Marketing", "Trash"},
+		{4, "Finance", "Trash"},
 	}
 
 	config := &common.Config{

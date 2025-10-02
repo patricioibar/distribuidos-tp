@@ -47,12 +47,13 @@ func (jw *JoinerWorker) Close() {
 	jw.rightInput.Close()
 	jw.output.Close()
 	close(jw.closeChan)
+	log.Debugf("Worker %s closed", jw.Config.WorkerId)
 }
 
 func (jw *JoinerWorker) innerStart() {
 	jw.rightInput.StartConsuming(jw.rightCallback())
 	<-jw.rightDone
-	log.Debugf("Right input received, starting left input", jw.Config.WorkerId)
+	log.Debugf("%s received all right input, starting left input", jw.Config.WorkerId)
 	jw.leftInput.StartConsuming(jw.leftCallback())
 }
 
@@ -92,7 +93,6 @@ func (jw *JoinerWorker) rightCallback() mw.OnMessageCallback {
 
 func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-		defer func() { done <- nil }()
 
 		log.Debugf("Worker %s received message: %s", jw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
@@ -100,6 +100,7 @@ func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 
 		if err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
+			done <- nil
 			return
 		}
 
@@ -107,6 +108,7 @@ func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 			jw.joinBatch(batch)
 		}
 
+		done <- nil
 		if batch.IsEndSignal() {
 			jw.sendJoinedResults()
 			jw.propagateLeftEndSignal(batch)
