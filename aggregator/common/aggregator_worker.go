@@ -135,6 +135,19 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 			continue
 		}
 
+		if aw.Config.DropNa {
+			hasNil := false
+			for _, idx := range groupByIndexes {
+				if row[idx] == nil {
+					hasNil = true
+					break
+				}
+			}
+			if hasNil {
+				continue
+			}
+		}
+
 		key := getGroupByKey(groupByIndexes, row)
 
 		if _, exists := aw.reducedData[key]; !exists {

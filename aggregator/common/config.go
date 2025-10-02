@@ -26,6 +26,7 @@ type Config struct {
 	BatchSize         int            `json:"output-batch-size" mapstructure:"output-batch-size"`
 	IsReducer         bool           `json:"is-reducer" mapstructure:"is-reducer"`
 	Retainings        []dr.Retaining `json:"retainings" mapstructure:"retainings"`
+	DropNa            bool           `json:"drop-na" mapstructure:"drop-na"`
 }
 
 var requiredFields = []string{
@@ -100,6 +101,10 @@ func InitConfig() (*Config, error) {
 			}
 			v.Set("group-by", parts)
 		}
+	}
+
+	if !v.IsSet("drop-na") {
+		v.Set("drop-na", false)
 	}
 
 	var config Config
