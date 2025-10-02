@@ -3,6 +3,9 @@ package main
 import (
 	filter "filter/common"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/op/go-logging"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
@@ -17,13 +20,9 @@ func main() {
 
 	filterId, filterType, consumerName, mwAddress, sourceQueue, outputExchange := getConfig()
 
-
-	// filterType := "byYear"
-	// mwAddress := "amqp://guest:guest@localhost:5672/"
-
-	// consumerName := "transactionToFilterByYear"
-	// sourceQueue := "transactions"
-	// outputExchange := "filteredTransactionsByYear"
+	// Create signal channel to handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	input, err := mw.NewConsumer(consumerName, sourceQueue, mwAddress)
 	if err != nil {
@@ -34,8 +33,63 @@ func main() {
 		log.Fatalf("Failed to create output producer: %v", err)
 	}
 
-	filterByYear := filter.NewFilter(filterId, input, output, filterType)
-	filterByYear.Start()
+	filterWorker := filter.NewFilter(filterId, input, output, filterType)
+	
+	// Start the filter worker in a goroutine
+	go func() {
+		log.Infof("Starting filter worker (ID: %s, Type: %s)", filterId, filterType)
+		filterWorker.Start()
+	}()
+
+	// Wait for termination signal
+	sig := <-sigChan
+	log.Infof("Received signal: %v. Initiating graceful shutdown...", sig)
+
+	// Graceful shutdown sequence
+	shutdownGracefully(filterWorker, input, output)
+	
+	log.Info("Filter service shutdown completed.")
+}
+
+func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.MessageMiddleware) {
+	log.Info("Starting graceful shutdown sequence...")
+	
+	// Set a timeout for graceful shutdown
+	shutdownTimeout := 30 * time.Second
+	shutdownComplete := make(chan bool, 1)
+	
+	go func() {
+		// Step 1: Stop the filter worker
+		log.Info("Stopping filter worker...")
+		filterWorker.Close()
+		log.Info("Filter worker stopped.")
+		
+		// Step 2: Close input consumer (stop receiving new messages)
+		log.Info("Closing input consumer...")
+		if err := input.StopConsuming(); err != nil {
+			log.Errorf("Error stopping input consumer: %v", err)
+		} else {
+			log.Info("Input consumer stopped.")
+		}
+		
+		// Step 3: Close output producer (finish sending pending messages)
+		log.Info("Closing output producer...")
+		if err := output.StopConsuming(); err != nil {
+			log.Errorf("Error stopping output producer: %v", err)
+		} else {
+			log.Info("Output producer stopped.")
+		}
+		
+		shutdownComplete <- true
+	}()
+	
+	// Wait for graceful shutdown or timeout
+	select {
+	case <-shutdownComplete:
+		log.Info("Graceful shutdown completed successfully.")
+	case <-time.After(shutdownTimeout):
+		log.Warning("Graceful shutdown timed out after %v. Forcing exit.", shutdownTimeout)
+	}
 }
 
 

@@ -119,15 +119,39 @@ func (f *FilterWorker) Start() {
 
 
 func (f *FilterWorker) Close() {
-	if err := f.input.StopConsuming(); err != nil {
-		log.Errorf("Failed to stop consuming messages: %v", err)
+	log.Info("FilterWorker shutdown initiated...")
+	
+	// First, signal the worker to stop processing new messages
+	select {
+	case <-f.closeChan:
+		// Already closed
+		log.Debug("FilterWorker already closed.")
+		return
+	default:
+		close(f.closeChan)
 	}
-	if err := f.output.StopConsuming(); err != nil {
-		log.Errorf("Failed to stop producing messages: %v", err)
+	
+	log.Debug("Stop signal sent to FilterWorker.")
+	
+	// Stop consuming new messages from input
+	if f.input != nil {
+		if err := f.input.StopConsuming(); err != nil {
+			log.Errorf("Failed to stop input consuming: %v", err)
+		} else {
+			log.Debug("Input consumer stopped.")
+		}
 	}
-
-	close(f.closeChan)
-
+	
+	// Stop the output producer
+	if f.output != nil {
+		if err := f.output.StopConsuming(); err != nil {
+			log.Errorf("Failed to stop output producer: %v", err)
+		} else {
+			log.Debug("Output producer stopped.")
+		}
+	}
+	
+	log.Info("FilterWorker shutdown completed.")
 }
 
 func (f *FilterWorker) handleEndSignal(batch *ic.RowsBatch) {
