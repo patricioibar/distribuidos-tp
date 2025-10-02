@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 
 	"communication"
+
+	"github.com/patricioibar/distribuidos-tp/innercommunication"
+
+	"github.com/patricioibar/distribuidos-tp/middleware"
 )
 
 type UserConnection struct {
@@ -38,63 +42,90 @@ func (u *UserConnection) Start() {
 func handleConnection(s *communication.Socket) {
 	defer s.Close()
 
+	//habria que cambiarle el nombre al metodo
+	var dir string
+	dirJson, err := s.ReadBatch()
+	if err != nil {
+		log.Errorf("Error reading batch: %v", err)
+		return
+	}
+	json.Unmarshal(dirJson, &dir)
+	log.Infof("Received dir: %v", dir)
+
+	//habria que cambiarle el nombre al metodo
+	var header []string
+	headerJson, err := s.ReadBatch()
+	if err != nil {
+		log.Errorf("Error reading batch: %v", err)
+		return
+	}
+	json.Unmarshal(headerJson, &header)
+	log.Infof("Received header: %v", header)
 	for {
+
 		data, err := s.ReadBatch()
 		if err != nil {
 			log.Errorf("Error reading batch: %v", err)
 			break
 		}
 
-		message := communication.Message{
+		/*message := communication.Message{
 			Type: "",
 			Data: nil,
-		}
+		}*/
+		var payload [][]interface{}
 
-		json.Unmarshal(data, &message)
+		json.Unmarshal(data, &payload)
+		/*
+			switch message.Type {
+			case "TransactionItem":
+				var items []communication.TransactionItem
+				err := json.Unmarshal(message.Data, &items)
+				if err != nil {
+					log.Errorf("Failed to unmarshal TransactionItem: %v", err)
+					continue
+				}
+				log.Infof("Received %d TransactionItems", len(items))
+				// Process TransactionItems as needed
 
-		switch message.Type {
-		case "TransactionItem":
-			var items []communication.TransactionItem
-			err := json.Unmarshal(message.Data, &items)
-			if err != nil {
-				log.Errorf("Failed to unmarshal TransactionItem: %v", err)
-				continue
-			}
-			log.Infof("Received %d TransactionItems", len(items))
-			// Process TransactionItems as needed
+			case "User":
+				var users []communication.User
+				err := json.Unmarshal(message.Data, &users)
+				if err != nil {
+					log.Errorf("Failed to unmarshal User: %v", err)
+					continue
+				}
+				log.Infof("Received %d Users", len(users))
+				// Process Users as needed
 
-		case "User":
-			var users []communication.User
-			err := json.Unmarshal(message.Data, &users)
-			if err != nil {
-				log.Errorf("Failed to unmarshal User: %v", err)
-				continue
-			}
-			log.Infof("Received %d Users", len(users))
-			// Process Users as needed
+			case "MenuItem":
+				var menuItems []communication.MenuItem
+				err := json.Unmarshal(message.Data, &menuItems)
+				if err != nil {
+					log.Errorf("Failed to unmarshal MenuItem: %v", err)
+					continue
+				}
+				log.Infof("Received %d MenuItems", len(menuItems))
+				// Process MenuItems as needed
 
-		case "MenuItem":
-			var menuItems []communication.MenuItem
-			err := json.Unmarshal(message.Data, &menuItems)
-			if err != nil {
-				log.Errorf("Failed to unmarshal MenuItem: %v", err)
-				continue
-			}
-			log.Infof("Received %d MenuItems", len(menuItems))
-			// Process MenuItems as needed
+			case "Transaction":
+				var transactions []communication.Transaction
+				err := json.Unmarshal(message.Data, &transactions)
+				if err != nil {
+					log.Errorf("Failed to unmarshal Transaction: %v", err)
+					continue
+				}
+				log.Infof("Received %d Transactions", len(transactions))
+				// Process Transactions as needed
 
-		case "Transaction":
-			var transactions []communication.Transaction
-			err := json.Unmarshal(message.Data, &transactions)
-			if err != nil {
-				log.Errorf("Failed to unmarshal Transaction: %v", err)
-				continue
-			}
-			log.Infof("Received %d Transactions", len(transactions))
-			// Process Transactions as needed
+			default:
+				log.Errorf("Unknown message type: %s", message.Type)
+			}*/
+		log.Infof("Received payload: %+v", payload)
 
-		default:
-			log.Errorf("Unknown message type: %s", message.Type)
-		}
+		rowsBatch := innercommunication.NewRowsBatch(header, payload)
+		rowsBatchMarshaled, _ := rowsBatch.Marshal()
+		producer, _ := middleware.NewProducer(dir, "amqp://guest:guest@localhost:5672/")
+		producer.Send(rowsBatchMarshaled)
 	}
 }

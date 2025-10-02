@@ -38,25 +38,47 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 		reader := Reader{FilePath: filepath.Join(dir, file.Name()), BatchSize: s.BatchSize}
 		batchCount := 0
 		end := false
-		var messageType string
+		//var messageType string
+
+		dirJson, _ := json.Marshal(dir)
+		//habria que cambiarle el nombre al metodo
+		err := socket.SendBatch(dirJson)
+		if err != nil && err != io.EOF {
+			log.Fatalf("Failed to send dir %v", err)
+			return
+		}
+
+		header, _ := reader.getHeader()
+		headerJson, _ := json.Marshal(header)
+		fmt.Printf("Header: %s\n", header)
+		fmt.Printf("Header: %s\n", headerJson)
+
+		//habria que cambiarle el nombre al metodo
+		err = socket.SendBatch(headerJson)
+		if err != nil && err != io.EOF {
+			log.Fatalf("Failed to send header %v", err)
+			return
+		}
+
 		for {
-			switch v.(type) {
-			case *[]communication.TransactionItem:
-				v = &[]communication.TransactionItem{}
-				messageType = "TransactionItem"
-			case *[]communication.User:
-				v = &[]communication.User{}
-				messageType = "User"
-			case *[]communication.MenuItem:
-				v = &[]communication.MenuItem{}
-				messageType = "MenuItem"
-			case *[]communication.Transaction:
-				v = &[]communication.Transaction{}
-				messageType = "Transaction"
-			}
+			/*
+				switch v.(type) {
+				case *[]communication.TransactionItem:
+					v = &[]communication.TransactionItem{}
+					messageType = "TransactionItem"
+				case *[]communication.User:
+					v = &[]communication.User{}
+					messageType = "User"
+				case *[]communication.MenuItem:
+					v = &[]communication.MenuItem{}
+					messageType = "MenuItem"
+				case *[]communication.Transaction:
+					v = &[]communication.Transaction{}
+					messageType = "Transaction"
+				}*/
 			fmt.Println(batchCount)
 
-			err := reader.getBatch(batchCount, v)
+			rows, err := reader.getBatch(batchCount)
 			if err != nil && err != io.EOF {
 				log.Fatalf("Failed to read batch %v", err)
 				return
@@ -66,24 +88,24 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 				end = true
 			}
 
-			data, err := json.Marshal(v)
+			data, err := json.Marshal(rows)
 			if err != nil {
 				log.Fatalf("Failed to send batch: %v", err)
 				return
 			}
+			/*
+				message := communication.Message{
+					Type: messageType,
+					Data: data,
+				}*/
 
-			message := communication.Message{
-				Type: messageType,
-				Data: data,
-			}
-
-			fmt.Printf("Unmarshalled data: %+v\n", message)
-
-			data, err = json.Marshal(message)
-			if err != nil {
+			//fmt.Printf("Unmarshalled data: %+v\n", message)
+			fmt.Printf("Unmarshalled data: %+v\n", rows)
+			//data, err = json.Marshal(data)
+			/*if err != nil {
 				log.Fatalf("Failed to marshal batch: %v", err)
 				return
-			}
+			}*/
 
 			fmt.Printf("Marshalled data: %+v\n", data)
 			fmt.Printf("Data len: %d\n", len(data))

@@ -15,10 +15,26 @@ type Reader struct {
 	BatchSize int
 }
 
-func (r *Reader) getBatch(batchCount int, v interface{}) error {
+func (r *Reader) getHeader() ([]string, error) {
 	file, err := os.Open(r.FilePath)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	header, err := reader.Read()
+	if err != nil {
+		return nil, err
+	}
+
+	return header, nil
+}
+
+func (r *Reader) getBatch(batchCount int) ([][]string, error) {
+	file, err := os.Open(r.FilePath)
+	if err != nil {
+		return nil, err
 	}
 	defer file.Close()
 
@@ -36,7 +52,7 @@ func (r *Reader) getBatch(batchCount int, v interface{}) error {
 		}
 
 		if err != nil && err != io.EOF {
-			return err
+			return nil, err
 		}
 	}
 
@@ -49,20 +65,21 @@ func (r *Reader) getBatch(batchCount int, v interface{}) error {
 			break
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		rows = append(rows, record)
 	}
 
-	for _, row := range rows {
-		addRowToData(v, row)
-	}
+	/*
+		for _, row := range rows {
+			addRowToData(v, row)
+		}*/
 
 	if eof_reached {
-		return io.EOF
+		return rows, io.EOF
 	}
 
-	return nil
+	return rows, nil
 }
 
 func addRowToData(v interface{}, row []string) {
