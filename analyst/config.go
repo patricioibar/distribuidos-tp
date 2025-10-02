@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -9,16 +10,25 @@ import (
 
 const configFilePath = "config.json"
 
+type TableConfig struct {
+	Name    string   `json:"name" mapstructure:"name"`
+	Columns []string `json:"columns" mapstructure:"columns"`
+}
+
 // Config represents the application's configuration structure.
 type Config struct {
-	BatchSize             int    `json:"batch-size" mapstructure:"batch-size"`
-	CoffeeAnalyzerAddress string `json:"coffee-analyzer-address" mapstructure:"coffee-analyzer-address"`
-	LogLevel              string `json:"log-level" mapstructure:"log-level"`
+	DataDir               string        `json:"data-dir" mapstructure:"data-dir"`
+	BatchSize             int           `json:"batch-size" mapstructure:"batch-size"`
+	CoffeeAnalyzerAddress string        `json:"coffee-analyzer-address" mapstructure:"coffee-analyzer-address"`
+	LogLevel              string        `json:"log-level" mapstructure:"log-level"`
+	Tables                []TableConfig `json:"tables" mapstructure:"tables"`
 }
 
 var requiredFields = []string{
+	"data-dir",
 	"batch-size",
 	"coffee-analyzer-address",
+	"tables",
 }
 
 // field: default value
@@ -50,6 +60,14 @@ func InitConfig() (*Config, error) {
 		if !v.IsSet(field) {
 			return nil, fmt.Errorf("missing required config field: %s", field)
 		}
+	}
+
+	if s := v.GetString("tables"); s != "" {
+		var tables []TableConfig
+		if err := json.Unmarshal([]byte(s), &tables); err != nil {
+			return nil, fmt.Errorf("could not parse tables JSON: %w", err)
+		}
+		v.Set("tables", tables)
 	}
 
 	var config Config

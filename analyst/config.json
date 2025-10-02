@@ -1,5 +1,28 @@
 {
+    "data-dir": ".data",
     "batch-size": 100,
     "coffee-analyzer-address": "localhost:30001",
-    "log-level": "info"
+    "log-level": "info",
+    "tables": [
+        {
+            "name": "menu_items",
+            "columns": ["item_id", "item_name"]
+        },
+        {
+            "name": "stores",
+            "columns": ["store_id", "store_name"]
+        },
+        {
+            "name": "users",
+            "columns": ["user_id", "birthdate"]
+        },
+        {
+            "name": "transactions",
+            "columns": ["created_at", "final_amount", "transaction_id", "store_id", "user_id"]
+        },
+        {
+            "name": "transaction_items",
+            "columns": ["created_at", "item_id", "quantity", "subtotal"]
+        }
+    ]
 }

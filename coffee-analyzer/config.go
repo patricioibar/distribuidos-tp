@@ -11,12 +11,14 @@ const configFilePath = "config.json"
 
 // Config represents the application's configuration structure.
 type Config struct {
-	Address  string `json:"address" mapstructure:"address"`
-	LogLevel string `json:"log-level" mapstructure:"log-level"`
+	ListeningAddress  string `json:"listening-address" mapstructure:"listening-address"`
+	MiddlewareAddress string `json:"middleware-address" mapstructure:"middleware-address"`
+	LogLevel          string `json:"log-level" mapstructure:"log-level"`
 }
 
 var requiredFields = []string{
-	"address",
+	"listening-address",
+	"middleware-address",
 }
 
 // field: default value

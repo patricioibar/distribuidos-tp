@@ -1,3 +1,5 @@
 {
-    "address": "localhost:30001"
+    "listening-address": "localhost:30001",
+    "middleware-address": "amqp://guest:guest@localhost:5672/",
+    "log-level": "debug"
 }

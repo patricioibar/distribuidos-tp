@@ -4,8 +4,6 @@ import (
 	"os"
 
 	"github.com/op/go-logging"
-
-	"communication"
 )
 
 var log = logging.MustGetLogger("log")
@@ -48,11 +46,8 @@ func main() {
 		CoffeeAnalyzerAddress: config.CoffeeAnalyzerAddress,
 	}
 
-	menuItems := []communication.MenuItem{}
-	serverConn.sendDataset("./dataset/menu_items", &menuItems)
-
-	users := []communication.User{}
-	serverConn.sendDataset("./dataset/users", &users)
-
-	//go serverConn.sendDataset("transactions.csv", Transactions)
+	for _, table := range config.Tables {
+		log.Infof("Sending dataset: %s with columns: %v", table.Name, table.Columns)
+		serverConn.sendDataset(table, config.DataDir)
+	}
 }

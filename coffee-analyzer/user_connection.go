@@ -12,6 +12,7 @@ import (
 
 type UserConnection struct {
 	Address string
+	mwAddr  string
 }
 
 func (u *UserConnection) Start() {
@@ -35,24 +36,23 @@ func (u *UserConnection) Start() {
 
 		log.Infof("Accepted connection")
 
-		go handleConnection(client_socket)
+		go handleConnection(client_socket, u.mwAddr)
 	}
 }
 
-func handleConnection(s *communication.Socket) {
+func handleConnection(s *communication.Socket, mwAddr string) {
 	defer s.Close()
 
-	//habria que cambiarle el nombre al metodo
-	var dir string
-	dirJson, err := s.ReadBatch()
+	var table string
+	tableBytes, err := s.ReadBatch()
 	if err != nil {
 		log.Errorf("Error reading batch: %v", err)
 		return
 	}
-	json.Unmarshal(dirJson, &dir)
-	log.Infof("Received dir: %v", dir)
+	json.Unmarshal(tableBytes, &table)
+	log.Infof("Received table: %v", table)
+	producer, _ := middleware.NewProducer(table, mwAddr)
 
-	//habria que cambiarle el nombre al metodo
 	var header []string
 	headerJson, err := s.ReadBatch()
 	if err != nil {
@@ -121,11 +121,10 @@ func handleConnection(s *communication.Socket) {
 			default:
 				log.Errorf("Unknown message type: %s", message.Type)
 			}*/
-		log.Infof("Received payload: %+v", payload)
+		// log.Infof("Received payload: %+v", payload)
 
 		rowsBatch := innercommunication.NewRowsBatch(header, payload)
 		rowsBatchMarshaled, _ := rowsBatch.Marshal()
-		producer, _ := middleware.NewProducer(dir, "amqp://guest:guest@localhost:5672/")
 		producer.Send(rowsBatchMarshaled)
 	}
 }

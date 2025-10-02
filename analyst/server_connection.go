@@ -14,8 +14,9 @@ type ServerConnection struct {
 	CoffeeAnalyzerAddress string
 }
 
-func (s *ServerConnection) sendDataset(dir string, v interface{}) {
+func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 	socket := communication.Socket{}
+	dir := fmt.Sprintf("%s/%s", dataDir, table.Name)
 
 	err := socket.Connect(s.CoffeeAnalyzerAddress)
 	if err != nil {
@@ -36,98 +37,60 @@ func (s *ServerConnection) sendDataset(dir string, v interface{}) {
 		}
 
 		reader := Reader{FilePath: filepath.Join(dir, file.Name()), BatchSize: s.BatchSize}
-		batchCount := 0
-		end := false
-		//var messageType string
 
-		dirJson, _ := json.Marshal(dir)
+		tableBytes, _ := json.Marshal(table.Name)
 		//habria que cambiarle el nombre al metodo
-		err := socket.SendBatch(dirJson)
+		err := socket.SendBatch(tableBytes)
 		if err != nil && err != io.EOF {
-			log.Fatalf("Failed to send dir %v", err)
+			log.Fatalf("Failed to send table %v", err)
 			return
 		}
 
 		header, _ := reader.getHeader()
 		headerJson, _ := json.Marshal(header)
-		fmt.Printf("Header: %s\n", header)
-		fmt.Printf("Header: %s\n", headerJson)
 
-		//habria que cambiarle el nombre al metodo
+		columnsIdxs := findColumnIdxs(table, header, file)
+
 		err = socket.SendBatch(headerJson)
 		if err != nil && err != io.EOF {
 			log.Fatalf("Failed to send header %v", err)
 			return
 		}
 
-		for {
-			/*
-				switch v.(type) {
-				case *[]communication.TransactionItem:
-					v = &[]communication.TransactionItem{}
-					messageType = "TransactionItem"
-				case *[]communication.User:
-					v = &[]communication.User{}
-					messageType = "User"
-				case *[]communication.MenuItem:
-					v = &[]communication.MenuItem{}
-					messageType = "MenuItem"
-				case *[]communication.Transaction:
-					v = &[]communication.Transaction{}
-					messageType = "Transaction"
-				}*/
-			fmt.Println(batchCount)
-
-			rows, err := reader.getBatch(batchCount)
-			if err != nil && err != io.EOF {
-				log.Fatalf("Failed to read batch %v", err)
-				return
-			}
-
-			if err == io.EOF {
-				end = true
-			}
-
-			data, err := json.Marshal(rows)
-			if err != nil {
-				log.Fatalf("Failed to send batch: %v", err)
-				return
-			}
-			/*
-				message := communication.Message{
-					Type: messageType,
-					Data: data,
-				}*/
-
-			//fmt.Printf("Unmarshalled data: %+v\n", message)
-			fmt.Printf("Unmarshalled data: %+v\n", rows)
-			//data, err = json.Marshal(data)
-			/*if err != nil {
-				log.Fatalf("Failed to marshal batch: %v", err)
-				return
-			}*/
-
-			fmt.Printf("Marshalled data: %+v\n", data)
-			fmt.Printf("Data len: %d\n", len(data))
-
-			//fmt.Printf("Marshalled data: %+v\n", data)
-
-			err = socket.SendBatch(data)
-			if err != nil {
-				log.Fatalf("Failed to send batch: %v", err)
-				return
-			}
-
-			log.Infof("Batch sent successfully")
-			batchCount += s.BatchSize
-
-			if end {
-				break
-			}
-		}
-
-		log.Infof("File sent successfully.")
+		reader.SendFileTroughSocket(columnsIdxs, socket)
 	}
 
 	log.Infof("All files from directory %s sent successfully.", dir)
+}
+
+func sendRowsTroughSocket(rows [][]string, socket communication.Socket) {
+	data, err := json.Marshal(rows)
+	if err != nil {
+		log.Errorf("Failed to send batch: %v", err)
+		return
+	}
+
+	err = socket.SendBatch(data)
+	if err != nil {
+		log.Errorf("Failed to send batch: %v", err)
+		return
+	}
+}
+
+func findColumnIdxs(table TableConfig, header []string, file os.DirEntry) []int {
+	columnsIdxs := []int{}
+	for _, col := range table.Columns {
+		found := false
+		for idx, headerCol := range header {
+			if col == headerCol {
+				columnsIdxs = append(columnsIdxs, idx)
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Fatalf("Column %s not found in file %s", col, file.Name())
+		}
+	}
+	return columnsIdxs
 }

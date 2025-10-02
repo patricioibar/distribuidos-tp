@@ -42,7 +42,8 @@ func main() {
 	}
 
 	userConn := UserConnection{
-		Address: config.Address,
+		Address: config.ListeningAddress,
+		mwAddr:  config.MiddlewareAddress,
 	}
 
 	userConn.Start()
