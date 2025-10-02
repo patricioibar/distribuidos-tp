@@ -88,7 +88,7 @@ func TestNewFilter(t *testing.T) {
 	input := &MockMiddleware{}
 	output := &MockMiddleware{}
 
-	filter := NewFilter("test-worker-1", input, output, "TbyYear")
+	filter := NewFilter("test-worker-1", input, output, "TbyYear", 1)
 
 	if filter == nil {
 		t.Errorf("expected filter instance but got nil")
@@ -204,7 +204,7 @@ func TestFilterWorkerIntegration(t *testing.T) {
 	output := &MockMiddleware{}
 
 	// Create filter worker with workerID
-	filter := NewFilter("test-worker", input, output, "TbyYear")
+	filter := NewFilter("test-worker", input, output, "TbyYear", 1)
 
 	// Test data with mixed years
 	testBatch := ic.RowsBatch{
@@ -264,7 +264,7 @@ func TestEndSignalHandling(t *testing.T) {
 	output := &MockMiddleware{}
 
 	// Create filter with workersCount = 1 (single worker scenario)
-	filter := NewFilter("worker-1", input, output, "TbyYear")
+	filter := NewFilter("worker-1", input, output, "TbyYear", 1)
 	filter.workersCount = 1
 
 	// Start filter in background

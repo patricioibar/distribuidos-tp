@@ -24,15 +24,16 @@ type FilterWorker struct {
 }
 
 
-func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string) *FilterWorker {
+func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string, workersCount int) *FilterWorker {
 	batchChan := make(chan ic.RowsBatch, maxBatchBufferSize)
 	fw := &FilterWorker{
-		filterId:        workerID,
-		input:        input,
-		output:       output,
+		filterId:       workerID,
+		workersCount:   workersCount,
+		input:          input,
+		output:         output,
 		filterFunction: nil,
-		batchChan:   batchChan,
-		closeChan:   make(chan struct{}),
+		batchChan:      batchChan,
+		closeChan:      make(chan struct{}),
 	}
 
 	filterFunction, err := fw.getFilterFunction(batchChan, filterType)

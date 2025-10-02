@@ -4,6 +4,7 @@ import (
 	filter "filter/common"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -18,7 +19,7 @@ func main() {
 	var input mw.MessageMiddleware
 	var output mw.MessageMiddleware
 
-	filterId, filterType, consumerName, mwAddress, sourceQueue, outputExchange := getConfig()
+	filterId, workersCountStr, filterType, consumerName, mwAddress, sourceQueue, outputExchange := getConfig()
 
 	// Create signal channel to handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -33,7 +34,13 @@ func main() {
 		log.Fatalf("Failed to create output producer: %v", err)
 	}
 
-	filterWorker := filter.NewFilter(filterId, input, output, filterType)
+	workersCount, err := strconv.Atoi(workersCountStr)
+	if err != nil {
+		log.Fatalf("Invalid WORKERS_COUNT value: %v", err)
+		return
+	}
+
+	filterWorker := filter.NewFilter(filterId, input, output, filterType, workersCount)
 	
 	// Start the filter worker in a goroutine
 	go func() {
@@ -93,9 +100,10 @@ func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.Mess
 }
 
 
-func getConfig() (string, string, string, string, string, string) {
+func getConfig() (string, string, string, string, string, string, string) {
 	// get enviroment variables for filterType, consumerName, mwAddress, sourceQueue, outputExchange
 	filterId := os.Getenv("FILTER_ID")
+	workersCount := os.Getenv("WORKERS_COUNT")
 	filterType := os.Getenv("FILTER_TYPE")
 	consumerName := os.Getenv("CONSUMER_NAME")
 	mwAddress := os.Getenv("MW_ADDRESS")
@@ -106,5 +114,5 @@ func getConfig() (string, string, string, string, string, string) {
 		os.Exit(1)
 	}
 
-	return filterId, filterType, consumerName, mwAddress, sourceQueue, outputExchange	
+	return filterId, workersCount, filterType, consumerName, mwAddress, sourceQueue, outputExchange	
 }
