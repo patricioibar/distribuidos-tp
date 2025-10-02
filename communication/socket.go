@@ -3,6 +3,7 @@ package communication
 import (
 	"encoding/binary"
 	"net"
+	"time"
 )
 
 const getResponseMessage = "GET_RESPONSES"
@@ -33,12 +34,25 @@ type Socket struct {
 }
 
 func (s *Socket) Connect(address string) error {
-	conn, err := net.Dial("tcp", address)
-	if err != nil {
-		return err
+	var (
+		conn net.Conn
+		err  error
+	)
+	backoff := 100 * time.Millisecond
+	maxBackoff := 3 * time.Second
+	for attempts := 0; attempts < 5; attempts++ {
+		conn, err = net.Dial("tcp", address)
+		if err == nil {
+			s.conn = conn
+			return nil
+		}
+		time.Sleep(backoff)
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
 	}
-	s.conn = conn
-	return nil
+	return err
 }
 
 func (s *Socket) SendBatch(data []byte) error {
