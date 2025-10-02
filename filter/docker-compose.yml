@@ -1,0 +1,79 @@
+services:
+  # RabbitMQ for testing
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: filter-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Filter service - TbyYear
+  filter-tbyear:
+    build:
+      context: ..
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyear
+    environment:
+      FILTER_ID: "filter-worker-1"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyYear"
+      CONSUMER_NAME: "transactions-year-consumer"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "transactions"
+      OUTPUT_EXCHANGE: "filtered-transactions-year"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Filter service - TbyHour  
+  filter-tbyhour:
+    build:
+      context: ..
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyhour
+    environment:
+      FILTER_ID: "filter-worker-2"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyHour"
+      CONSUMER_NAME: "transactions-hour-consumer"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "transactions"
+      OUTPUT_EXCHANGE: "filtered-transactions-hour"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Filter service - TbyAmount
+  filter-tbyamount:
+    build:
+      context: ..
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyamount
+    environment:
+      FILTER_ID: "filter-worker-3"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyAmount"
+      CONSUMER_NAME: "transactions-amount-consumer"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "transactions"
+      OUTPUT_EXCHANGE: "filtered-transactions-amount"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+    driver: local

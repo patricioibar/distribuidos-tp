@@ -14,6 +14,8 @@ const maxBatchBufferSize = 100
 var log = logging.MustGetLogger("log")
 
 type FilterWorker struct {
+	filterId string
+	workersCount int
 	input  mw.MessageMiddleware
 	output mw.MessageMiddleware
 	filterFunction mw.OnMessageCallback
@@ -22,25 +24,31 @@ type FilterWorker struct {
 }
 
 
-func NewFilter(input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string) *FilterWorker {
+func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string, workersCount int) *FilterWorker {
 	batchChan := make(chan ic.RowsBatch, maxBatchBufferSize)
-	filterFunction, err := getFilterFunction(batchChan, filterType)
+	fw := &FilterWorker{
+		filterId:       workerID,
+		workersCount:   workersCount,
+		input:          input,
+		output:         output,
+		filterFunction: nil,
+		batchChan:      batchChan,
+		closeChan:      make(chan struct{}),
+	}
+
+	filterFunction, err := fw.getFilterFunction(batchChan, filterType)
 	if err != nil {
 		log.Fatalf("Failed to get filter function: %v", err)
 	}
 
-	return &FilterWorker{
-		input:        input,
-		output:       output,
-		filterFunction: filterFunction,
-		batchChan:   batchChan,
-		closeChan:   make(chan struct{}),
-	}
+	fw.filterFunction = filterFunction
+
+	return fw
 }
 
 
-func getFilterFunction(batchChan chan ic.RowsBatch, filterType string) (mw.OnMessageCallback, error) {
-	var filterFunction func(ic.RowsBatch) (ic.RowsBatch, error);
+func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType string) (mw.OnMessageCallback, error) {
+	var filterFunction func(ic.RowsBatch) (ic.RowsBatch, error)
 	switch filterType {
 	case "TbyYear":
 		filterFunction = filterRowsByYear
@@ -63,25 +71,30 @@ func getFilterFunction(batchChan chan ic.RowsBatch, filterType string) (mw.OnMes
 			return
 		}
 
-		if len(batch.Rows) == 0 {
-			log.Warning("Received empty batch")
-			done <- nil
-			return
-		}
-
-		filteredBatch, err := filterFunction(batch)
-
-		if err != nil {
-			log.Errorf("Failed to filter rows by year: %v", err)
-			done <- &mw.MessageMiddlewareError{
-				Code: mw.MessageMiddlewareMessageError,
-				Msg: "Failed to aggregate rows: " + err.Error(),
+		if len(batch.Rows) != 0 {
+			filteredBatch, err := filterFunction(batch)
+			if err != nil {
+				log.Errorf("Failed to filter rows by year: %v", err)
+				// done <- &mw.MessageMiddlewareError{
+				// 	Code: mw.MessageMiddlewareMessageError,
+				// 	Msg: "Failed to filter rows: " + err.Error(),
+				// }
+			} else {
+				log.Infof("Filter %s processed batch: %d input rows -> %d output rows", f.filterId, len(batch.Rows), len(filteredBatch.Rows))
+				if len(filteredBatch.Rows) > 0 {
+					batchChan <- filteredBatch
+				} else {
+					log.Infof("Filter %s: No rows passed the filter criteria", f.filterId)
+				}
 			}
-			return
 		}
 
-		batchChan <- filteredBatch
+		if batch.IsEndSignal() {
+			f.handleEndSignal(&batch)
+		}
+
 		done <- nil
+
 	}, nil
 }
 
@@ -102,8 +115,11 @@ func (f *FilterWorker) Start() {
 					log.Errorf("Failed to marshal batch: %v", err)
 					continue
 				}
+				log.Infof("Filter %s sending %d filtered rows to output exchange", f.filterId, len(batch.Rows))
 				if err := f.output.Send(data); err != nil {
 					log.Errorf("Failed to send message: %v", err)
+				} else {
+					log.Infof("Filter %s successfully sent batch to output exchange", f.filterId)
 				}
 		}
 	}
@@ -112,13 +128,60 @@ func (f *FilterWorker) Start() {
 
 
 func (f *FilterWorker) Close() {
-	if err := f.input.StopConsuming(); err != nil {
-		log.Errorf("Failed to stop consuming messages: %v", err)
+	log.Info("FilterWorker shutdown initiated...")
+	
+	// First, signal the worker to stop processing new messages
+	select {
+	case <-f.closeChan:
+		// Already closed
+		log.Debug("FilterWorker already closed.")
+		return
+	default:
+		close(f.closeChan)
 	}
-	if err := f.output.StopConsuming(); err != nil {
-		log.Errorf("Failed to stop producing messages: %v", err)
+	
+	log.Debug("Stop signal sent to FilterWorker.")
+	
+	// Stop consuming new messages from input
+	if f.input != nil {
+		if err := f.input.StopConsuming(); err != nil {
+			log.Errorf("Failed to stop input consuming: %v", err)
+		} else {
+			log.Debug("Input consumer stopped.")
+		}
+	}
+	
+	// Stop the output producer
+	if f.output != nil {
+		if err := f.output.StopConsuming(); err != nil {
+			log.Errorf("Failed to stop output producer: %v", err)
+		} else {
+			log.Debug("Output producer stopped.")
+		}
+	}
+	
+	log.Info("FilterWorker shutdown completed.")
+}
+
+func (f *FilterWorker) handleEndSignal(batch *ic.RowsBatch) {
+
+	log.Debugf("Worker received end signal. Task ended.")
+
+	batch.AddWorkerDone(f.filterId)
+
+	if len(batch.WorkersDone) == f.workersCount {
+		log.Debug("All workers done. Sending end signal to next stage.")
+		endSignal, _ := ic.NewEndSignal().Marshal()
+		f.output.Send(endSignal)
+		return
 	}
 
-	close(f.closeChan)
-
+	endBatch := ic.RowsBatch{
+		EndSignal:  batch.EndSignal,
+		WorkersDone: batch.WorkersDone,
+		Rows: nil,
+		ColumnNames: nil,
+	}
+	endSignal, _ := endBatch.Marshal()
+	f.input.Send(endSignal)
 }

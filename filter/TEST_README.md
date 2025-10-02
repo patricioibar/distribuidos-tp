@@ -1,90 +1,95 @@
-# Tests de Integración para FilterWorker
+# Tests de Integración para FilterWorker (Actualizado)
 
-Este archivo contiene tests comprehensivos de integración para todas las funciones del módulo `filter`.
+Este archivo contiene tests comprehensivos de integración para todas las funciones del módulo `filter` con soporte para manejo de señales de finalización.
 
 ## Tests Implementados
 
-### 1. `TestParseTimestamp`
-- **Objetivo**: Verificar el parsing correcto de timestamps en formato "2006-01-02 15:04:05"
+### 1. `TestNewFilter` (Actualizado)
+- **Objetivo**: Verificar la correcta inicialización del FilterWorker con el nuevo parámetro `workerID`
 - **Casos de prueba**:
-  - Timestamps válidos con diferentes fechas
-  - Formatos inválidos (separadores incorrectos, faltan datos, cadena vacía)
-  - Formatos de tiempo incorrectos
-
-### 2. `TestFilterRowsByYear`
-- **Objetivo**: Probar la función de filtrado por año con asignación de semestres
-- **Casos de prueba**:
-  - Datos válidos de 2024 primer semestre (enero-junio)
-  - Datos válidos de 2025 segundo semestre (julio-diciembre)
-  - Mezcla de años (solo 2024/2025 deben pasar)
-  - Errores: columna "year" no encontrada, filas con columnas insuficientes
-  - Formato de timestamp inválido
-  - Columna year que no es string
-  - Batch vacío (debe funcionar correctamente)
-
-### 3. `TestGetFilterFunction`
-- **Objetivo**: Verificar que se devuelva la función de filtro correcta según el tipo
-- **Casos de prueba**:
-  - Tipo de filtro válido ("byYear")
-  - Tipos de filtro inválidos
-  - Tipo de filtro vacío
-
-### 4. `TestFilterCallbackFunction`
-- **Objetivo**: Probar el comportamiento de la función callback del filtro
-- **Casos de prueba**:
-  - Batch válido con datos de 2024
-  - Batch vacío (no debe enviar datos)
-  - JSON inválido (debe generar error)
-
-### 5. `TestNewFilter`
-- **Objetivo**: Verificar la correcta inicialización del FilterWorker
-- **Casos de prueba**:
-  - Creación exitosa con filtro "byYear"
+  - Creación exitosa con filtro "TbyYear" y workerID
   - Verificación de que todos los campos se inicialicen correctamente
+  - **Cambios**: Ahora requiere `workerID` como primer parámetro
   - **Nota**: No se puede probar fácilmente tipos de filtro inválidos porque `NewFilter` llama a `log.Fatalf`
 
-### 6. `TestFilterWorkerIntegration`
+### 2. `TestGetFilterFunction` (Actualizado)
+- **Objetivo**: Verificar que se devuelva la función de filtro correcta según el tipo (ahora es un método)
+- **Casos de prueba**:
+  - Tipos de filtro válidos: "TbyYear", "TbyHour", "TbyAmount", "TIbyYear"
+  - Tipos de filtro inválidos
+  - **Cambios**: Ahora es un método de `FilterWorker` en lugar de una función standalone
+
+### 3. `TestFilterCallbackWithEndSignal` (Nuevo)
+- **Objetivo**: Probar el comportamiento de la función callback con señales de finalización
+- **Casos de prueba**:
+  - Procesamiento correcto de señales de finalización
+  - Verificar que no se generen errores al manejar end signals
+  - **Nuevo**: Manejo de `EndSignal` y `WorkersDone`
+
+### 4. `TestFilterWorkerIntegration` (Actualizado)
 - **Objetivo**: Test de integración end-to-end que simula el flujo completo
 - **Flujo de prueba**:
-  1. Crea un FilterWorker con mocks de input/output
+  1. Crea un FilterWorker con mocks de input/output y workerID
   2. Envía datos de prueba con años 2023, 2024 y 2025
   3. Verifica que solo los datos 2024/2025 pasen el filtro
-  4. Confirma que se agregue correctamente la columna "semester"
-  5. Valida la asignación correcta de semestres (primer/segundo semestre)
+  4. **Cambios**: Usa la nueva estructura `RowsBatch` con `EndSignal`
 
-### 7. `TestFilterWorkerStartAndClose`
-- **Objetivo**: Probar los métodos Start y Close del FilterWorker
+### 5. `TestEndSignalHandling` (Nuevo)
+- **Objetivo**: Probar el manejo específico de señales de finalización
 - **Casos de prueba**:
-  - Inicio y cierre exitoso del worker
-  - Verificación de que el middleware comience y detenga el consumo correctamente
+  - Worker único: señal de fin se envía al siguiente stage
+  - Verificar que se complete el procesamiento cuando todos los workers terminan
+  - **Nuevo**: Funcionalidad crítica para coordinación distribuida
 
-### 8. `TestFilterWorkerErrorHandling`
-- **Objetivo**: Probar manejo de errores en el FilterWorker
-- **Casos de prueba**:
-  - Error al enviar mensajes (output middleware falla)
-  - JSON inválido en el callback (debe manejarse graciosamente)
+## Cambios Principales en la Arquitectura
+
+### Nuevos Campos en FilterWorker:
+- `filterId`: Identificador único del worker
+- `workersCount`: Número total de workers para coordinación de señales de fin
+
+### Nueva Estructura RowsBatch:
+- `EndSignal`: Booleano que indica señal de finalización
+- `WorkersDone`: Array de IDs de workers que han completado
+- Eliminado: `JobDone` (reemplazado por `EndSignal`)
+
+### Nuevos Tipos de Filtro:
+- `TbyYear`: Filtrado por año (reemplaza "byYear")
+- `TbyHour`: Filtrado por hora
+- `TbyAmount`: Filtrado por monto de transacción
+- `TIbyYear`: Filtrado de items de transacción por año
+
+### Funcionalidad de End Signal:
+- Coordinación distribuida entre múltiples workers
+- Propagación automática de señales de finalización
+- Manejo inteligente de completitud de tareas
 
 ## Implementaciones Mock
 
-### `MockMiddleware`
+### `MockMiddleware` (Actualizado)
 Implementación mock del interface `MessageMiddleware` que permite:
 - Simular envío y recepción de mensajes
 - Controlar errores en operaciones
 - Rastrear el estado de consumo
 - Acceder a mensajes enviados para verificación
+- **Nuevo**: Soporte para simulación de señales de finalización
 
 ## Notas Importantes
 
-1. **Limitaciones de testing**: Algunas funciones usan `log.Fatalf` que termina el proceso, lo que dificulta el testing unitario. En un entorno de producción se recomienda refactorizar para devolver errores en lugar de terminar el proceso.
+1. **Cambios de API**: 
+   - `NewFilter` ahora requiere `workerID` como primer parámetro
+   - `getFilterFunction` es ahora un método de `FilterWorker`
+   - Nuevos tipos de filtro con prefijo "T"
 
-2. **Cobertura**: Los tests cubren tanto casos exitosos como escenarios de error, incluyendo:
-   - Validación de datos de entrada
-   - Manejo de errores de parsing
-   - Comportamiento con datos vacíos
-   - Filtrado correcto por años y semestres
-   - Flujo de comunicación completo
+2. **Manejo de End Signals**: Los tests verifican el correcto manejo de señales de finalización, crucial para la coordinación distribuida
 
-3. **Concurrencia**: Los tests incluyen manejo de goroutines y channels para simular el comportamiento real del sistema distribuido.
+3. **Limitaciones de testing**: Algunas funciones usan `log.Fatalf` que termina el proceso, lo que dificulta el testing unitario.
+
+4. **Cobertura**: Los tests cubren:
+   - Inicialización con nuevos parámetros
+   - Múltiples tipos de filtro
+   - Manejo de señales de finalización
+   - Integración end-to-end
+   - Coordinación distribuida
 
 ## Ejecución
 
@@ -93,4 +98,4 @@ cd filter
 go test ./common -v
 ```
 
-Todos los tests deben pasar exitosamente, proporcionando confianza en el correcto funcionamiento del módulo de filtrado.
+**Resultado esperado**: Todos los tests pasan exitosamente, incluyendo la nueva funcionalidad de manejo de señales de finalización.
