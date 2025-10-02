@@ -2,12 +2,16 @@ module cofee-analyzer
 
 go 1.25
 
+replace github.com/patricioibar/distribuidos-tp/innercommunication => ../innercommunication
+
+replace github.com/patricioibar/distribuidos-tp/middleware => ../middleware
+
 replace github.com/patricioibar/distribuidos-tp/communication => ../communication
 
 require (
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
-	github.com/patricioibar/distribuidos-tp/innercommunication v0.0.0-20251002075226-e4eb542ee7af
-	github.com/patricioibar/distribuidos-tp/middleware v0.0.0-20251002073917-38b6fc0804c5
+	github.com/patricioibar/distribuidos-tp/innercommunication v0.0.0-00010101000000-000000000000
+	github.com/patricioibar/distribuidos-tp/middleware v0.0.0-00010101000000-000000000000
 	github.com/spf13/viper v1.21.0
 )
 
