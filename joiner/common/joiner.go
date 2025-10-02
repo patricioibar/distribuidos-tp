@@ -225,14 +225,3 @@ func (jw *JoinerWorker) sendBatch(batch *ic.RowsBatch) {
 		log.Errorf("Failed to send batch: %v", err)
 	}
 }
-
-func stringOrEmpty(batch *ic.RowsBatch) string {
-	if batch == nil {
-		return ""
-	}
-	data, err := batch.Marshal()
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
