@@ -147,13 +147,16 @@ func retainGrouping[V cmp.Ordered](
 
 	result := RetainedData{
 		KeyColumns:   groupByColumns,
-		Aggregations: aggregations,
+		Aggregations: []a.AggConfig{aggregations[valueIdx]},
 		Data:         make([][]interface{}, 0),
 	}
 
 	for _, topValues := range groupedTops {
 		for _, entry := range topValues.Values() {
-			row := getRowFromKeyAndAggregations(entry.Key.(string), entry.Aggs)
+			row := getRowFromKeyAndAggregations(
+				entry.Key.(string),
+				[]a.Aggregation{entry.Aggs[valueIdx]},
+			)
 			result.Data = append(result.Data, row)
 		}
 	}

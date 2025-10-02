@@ -90,12 +90,12 @@ func TestBestSellingProducts(t *testing.T) {
 
 	utils.AssertBatchesMatch(
 		t,
-		`{"column_names":["year_month","item_name","sum_profit","count_profit"],"rows":[["2025-01","americano",20,2],["2025-02","cortado",4,4]]}`,
+		`{"column_names":["year_month","item_name","count_profit"],"rows":[["2025-01","americano",2],["2025-02","cortado",4]]}`,
 		output[0],
 	)
 	utils.AssertBatchesMatch(
 		t,
-		`{"column_names":["year_month","item_name","sum_profit","count_profit"],"rows":[["2025-01","lagrima",20.1,1],["2025-02","boba",160,1]]}`,
+		`{"column_names":["year_month","item_name","sum_profit"],"rows":[["2025-01","lagrima",20.1],["2025-02","boba",160]]}`,
 		output[1],
 	)
 
