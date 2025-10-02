@@ -11,7 +11,7 @@ type JoinerWorker struct {
 	rightInput mw.MessageMiddleware
 	output     mw.MessageMiddleware
 	rightCache *TableCache
-	joinedRows [][]any
+	joinedRows [][]interface{}
 	rightDone  chan struct{}
 	closeChan  chan struct{}
 }
@@ -30,7 +30,7 @@ func NewJoinerWorker(
 		closeChan:  make(chan struct{}),
 		rightDone:  make(chan struct{}),
 		rightCache: nil,
-		joinedRows: make([][]any, 0),
+		joinedRows: make([][]interface{}, 0),
 	}
 }
 
@@ -168,8 +168,8 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatch) {
 	}
 }
 
-func (jw *JoinerWorker) addJoinedRow(batch *ic.RowsBatch, leftRow []any, rightRow []any) {
-	joinedRow := make([]any, len(jw.Config.OutputColumns))
+func (jw *JoinerWorker) addJoinedRow(batch *ic.RowsBatch, leftRow []interface{}, rightRow []interface{}) {
+	joinedRow := make([]interface{}, len(jw.Config.OutputColumns))
 	for i, col := range jw.Config.OutputColumns {
 		leftColIndex := findColumnIndex(col, batch.ColumnNames)
 		if leftColIndex != -1 {
@@ -195,7 +195,7 @@ func (jw *JoinerWorker) sendJoinedResults() {
 	batchSize := jw.Config.BatchSize
 	currentBatch := &ic.RowsBatch{
 		ColumnNames: jw.Config.OutputColumns,
-		Rows:        make([][]any, 0),
+		Rows:        make([][]interface{}, 0),
 		WorkersDone: make([]string, 0),
 	}
 
@@ -204,7 +204,7 @@ func (jw *JoinerWorker) sendJoinedResults() {
 
 		if (i+1)%batchSize == 0 {
 			jw.sendBatch(currentBatch)
-			currentBatch.Rows = make([][]any, 0)
+			currentBatch.Rows = make([][]interface{}, 0)
 		}
 	}
 

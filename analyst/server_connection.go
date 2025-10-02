@@ -2,7 +2,6 @@ package main
 
 import (
 	c "communication"
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -134,21 +133,18 @@ func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch, d
 		return
 	}
 
-	writer := csv.NewWriter(file)
-
-	firstBatch := <-responseChan
-	if err := writer.Write(firstBatch.Columns); err != nil {
-		log.Errorf("Failed to write header to file %s: %v", fileName, err)
-		file.Close()
-		return
-	}
-	for _, row := range firstBatch.Rows {
-		if err := writer.Write(row); err != nil {
-			log.Errorf("Failed to write row to file %s: %v", fileName, err)
+	{
+		firstBatch := <-responseChan
+		header := joinStringArr(firstBatch.Columns, ",")
+		if _, err := file.WriteString(header + "\n"); err != nil {
+			log.Errorf("Failed to write header to file %s: %v", fileName, err)
+			file.Close()
+			return
 		}
+		writeRows(firstBatch.Rows, file, fileName)
+		log.Infof("query %v firstBatch columns: %+v", queryId, firstBatch.Columns)
+		log.Infof("query %v firstBatch rows: %+v", queryId, firstBatch.Rows)
 	}
-	log.Infof("query %v firstBatch columns: %+v", queryId, firstBatch.Columns)
-	log.Infof("query %v firstBatch rows: %+v", queryId, firstBatch.Rows)
 
 	for batch := range responseChan {
 		if batch.Rows == nil {
@@ -157,19 +153,20 @@ func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch, d
 		if batch.EOF {
 			break
 		}
-		for _, row := range batch.Rows {
-			if err := writer.Write(row); err != nil {
-				log.Errorf("Failed to write row to file %s: %v", fileName, err)
-			}
-		}
-		writer.Flush()
-		if err := writer.Error(); err != nil {
-			log.Errorf("Error flushing to file %s: %v", fileName, err)
-		}
+		writeRows(batch.Rows, file, fileName)
 	}
 	file.Close()
 	close(done)
 	log.Infof("Finished writing responses for query %d to file %s", queryId, fileName)
+}
+
+func writeRows(rows [][]string, file *os.File, fileName string) {
+	for _, row := range rows {
+		rowStr := joinStringArr(row, ",")
+		if _, err := file.WriteString(rowStr + "\n"); err != nil {
+			log.Errorf("Failed to write row to file %s: %v", fileName, err)
+		}
+	}
 }
 
 func (s *ServerConnection) WaitForResults() {
@@ -177,4 +174,15 @@ func (s *ServerConnection) WaitForResults() {
 	for _, done := range s.resultWrittingDone {
 		<-done
 	}
+}
+
+func joinStringArr(arr []string, sep string) string {
+	result := ""
+	for i, str := range arr {
+		if i > 0 {
+			result += sep
+		}
+		result += str
+	}
+	return result
 }
