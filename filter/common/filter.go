@@ -14,6 +14,8 @@ const maxBatchBufferSize = 100
 var log = logging.MustGetLogger("log")
 
 type FilterWorker struct {
+	filterId string
+	workersCount int
 	input  mw.MessageMiddleware
 	output mw.MessageMiddleware
 	filterFunction mw.OnMessageCallback
@@ -22,25 +24,30 @@ type FilterWorker struct {
 }
 
 
-func NewFilter(input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string) *FilterWorker {
+func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string) *FilterWorker {
 	batchChan := make(chan ic.RowsBatch, maxBatchBufferSize)
-	filterFunction, err := getFilterFunction(batchChan, filterType)
+	fw := &FilterWorker{
+		filterId: 	workerID,
+		input:        input,
+		output:       output,
+		filterFunction: nil,
+		batchChan:   batchChan,
+		closeChan:   make(chan struct{}),
+	}
+
+	filterFunction, err := fw.getFilterFunction(batchChan, filterType)
 	if err != nil {
 		log.Fatalf("Failed to get filter function: %v", err)
 	}
 
-	return &FilterWorker{
-		input:        input,
-		output:       output,
-		filterFunction: filterFunction,
-		batchChan:   batchChan,
-		closeChan:   make(chan struct{}),
-	}
+	fw.filterFunction = filterFunction
+
+	return fw
 }
 
 
-func getFilterFunction(batchChan chan ic.RowsBatch, filterType string) (mw.OnMessageCallback, error) {
-	var filterFunction func(ic.RowsBatch) (ic.RowsBatch, error);
+func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType string) (mw.OnMessageCallback, error) {
+	var filterFunction func(ic.RowsBatch) (ic.RowsBatch, error)
 	switch filterType {
 	case "TbyYear":
 		filterFunction = filterRowsByYear
@@ -63,25 +70,25 @@ func getFilterFunction(batchChan chan ic.RowsBatch, filterType string) (mw.OnMes
 			return
 		}
 
-		if len(batch.Rows) == 0 {
-			log.Warning("Received empty batch")
-			done <- nil
-			return
-		}
-
-		filteredBatch, err := filterFunction(batch)
-
-		if err != nil {
-			log.Errorf("Failed to filter rows by year: %v", err)
-			done <- &mw.MessageMiddlewareError{
-				Code: mw.MessageMiddlewareMessageError,
-				Msg: "Failed to aggregate rows: " + err.Error(),
+		if len(batch.Rows) != 0 {
+			filteredBatch, err := filterFunction(batch)
+			if err != nil {
+				log.Errorf("Failed to filter rows by year: %v", err)
+				done <- &mw.MessageMiddlewareError{
+					Code: mw.MessageMiddlewareMessageError,
+					Msg: "Failed to filter rows: " + err.Error(),
+				}
 			}
-			return
+			batchChan <- filteredBatch
+			done <- nil
 		}
 
-		batchChan <- filteredBatch
+		if batch.IsEndSignal() {
+			f.handleEndSignal(&batch)
+		}
+
 		done <- nil
+
 	}, nil
 }
 
@@ -121,4 +128,27 @@ func (f *FilterWorker) Close() {
 
 	close(f.closeChan)
 
+}
+
+func (f *FilterWorker) handleEndSignal(batch *ic.RowsBatch) {
+
+	log.Debugf("Worker received end signal. Task ended.")
+
+	batch.AddWorkerDone(f.filterId)
+
+	if len(batch.WorkersDone) == f.workersCount {
+		log.Debug("All workers done. Sending end signal to next stage.")
+		endSignal, _ := ic.NewEndSignal().Marshal()
+		f.output.Send(endSignal)
+		return
+	}
+
+	endBatch := ic.RowsBatch{
+		EndSignal:  batch.EndSignal,
+		WorkersDone: batch.WorkersDone,
+		Rows: nil,
+		ColumnNames: nil,
+	}
+	endSignal, _ := endBatch.Marshal()
+	f.input.Send(endSignal)
 }

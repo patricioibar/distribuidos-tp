@@ -1,4 +1,4 @@
-package filter
+package main
 
 import (
 	filter "filter/common"
@@ -15,7 +15,7 @@ func main() {
 	var input mw.MessageMiddleware
 	var output mw.MessageMiddleware
 
-	filterType, consumerName, mwAddress, sourceQueue, outputExchange := getConfig()
+	filterId, filterType, consumerName, mwAddress, sourceQueue, outputExchange := getConfig()
 
 
 	// filterType := "byYear"
@@ -34,13 +34,14 @@ func main() {
 		log.Fatalf("Failed to create output producer: %v", err)
 	}
 
-	filterByYear := filter.NewFilter(input, output, filterType)
+	filterByYear := filter.NewFilter(filterId, input, output, filterType)
 	filterByYear.Start()
 }
 
 
-func getConfig() (string, string, string, string, string) {
+func getConfig() (string, string, string, string, string, string) {
 	// get enviroment variables for filterType, consumerName, mwAddress, sourceQueue, outputExchange
+	filterId := os.Getenv("FILTER_ID")
 	filterType := os.Getenv("FILTER_TYPE")
 	consumerName := os.Getenv("CONSUMER_NAME")
 	mwAddress := os.Getenv("MW_ADDRESS")
@@ -51,5 +52,5 @@ func getConfig() (string, string, string, string, string) {
 		os.Exit(1)
 	}
 
-	return filterType, consumerName, mwAddress, sourceQueue, outputExchange	
+	return filterId, filterType, consumerName, mwAddress, sourceQueue, outputExchange	
 }

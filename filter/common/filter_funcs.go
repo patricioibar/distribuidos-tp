@@ -57,7 +57,7 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	batch.ColumnNames = append(batch.ColumnNames, "semester")
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		EndSignal:   batch.EndSignal,
+		EndSignal:   false,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
@@ -99,7 +99,7 @@ func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		EndSignal:   batch.EndSignal,
+		EndSignal:   false,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
@@ -137,7 +137,7 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		EndSignal:   batch.EndSignal,
+		EndSignal:   false,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
@@ -180,7 +180,7 @@ func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
-		EndSignal:   batch.EndSignal,
+		EndSignal:   false,
 		Rows:        filteredRows,
 	}
 	return filteredBatch, nil
