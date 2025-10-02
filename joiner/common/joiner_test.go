@@ -346,3 +346,123 @@ func TestJoinMultipleBatches(t *testing.T) {
 		t.Fatalf("Expected end signal in last message")
 	}
 }
+
+func TestMultipleJoiners(t *testing.T) {
+	leftColumns := []string{"id", "name"}
+	leftRows1 := [][]any{
+		{1, "Alice"},
+		{6, "Frank"},
+	}
+	leftRows2 := [][]any{
+		{5, "Eve"},
+		{2, "Bob"},
+	}
+	leftRows3 := [][]any{
+		{3, "Charlie"},
+		{4, "Diana"},
+	}
+	rightColumns := []string{"id", "department"}
+	rightRows := [][]any{
+		{1, "HR"},
+		{2, "Engineering"},
+		{3, "Marketing"},
+		{4, "Finance"},
+	}
+
+	config1 := &common.Config{
+		WorkerId:      "worker-1",
+		WorkersCount:  2,
+		JoinKey:       "id",
+		OutputColumns: []string{"name", "department"},
+		BatchSize:     3,
+	}
+	config2 := &common.Config{
+		WorkerId:      "worker-2",
+		WorkersCount:  2,
+		JoinKey:       "id",
+		OutputColumns: []string{"name", "department"},
+		BatchSize:     3,
+	}
+
+	expectedJoinedRows := map[string]string{
+		"Alice":   "HR",
+		"Bob":     "Engineering",
+		"Charlie": "Marketing",
+		"Diana":   "Finance",
+	}
+
+	leftBatch1 := ic.NewRowsBatch(leftColumns, leftRows1)
+	leftBatch2 := ic.NewRowsBatch(leftColumns, leftRows2)
+	leftBatch3 := ic.NewRowsBatch(leftColumns, leftRows3)
+	rightBatch := ic.NewRowsBatch(rightColumns, rightRows)
+
+	leftBatchBytes1, _ := leftBatch1.Marshal()
+	leftBatchBytes2, _ := leftBatch2.Marshal()
+	leftBatchBytes3, _ := leftBatch3.Marshal()
+	rightBatchBytes, _ := rightBatch.Marshal()
+
+	// round robin on left input, replicated data in right input
+	leftInput := newStubConsumer()
+	right1Input := newStubConsumer()
+	right2Input := newStubConsumer()
+	output := newStubProducer()
+
+	joiner1 := common.NewJoinerWorker(config1, leftInput, right1Input, output)
+	joiner2 := common.NewJoinerWorker(config2, leftInput, right2Input, output)
+
+	go func() { joiner1.Start() }()
+	go func() { joiner2.Start() }()
+
+	right1Input.waitForStart()
+	right2Input.waitForStart()
+	right1Input.SimulateMessage(rightBatchBytes)
+	right1Input.SimulateMessage(endSignal)
+	right2Input.SimulateMessage(rightBatchBytes)
+	right2Input.SimulateMessage(endSignal)
+
+	leftInput.waitForStart()
+	leftInput.SimulateMessage(leftBatchBytes1)
+	leftInput.SimulateMessage(leftBatchBytes2)
+	leftInput.SimulateMessage(leftBatchBytes3)
+	leftInput.SimulateMessage(endSignal)
+
+	output.waitForAMessage()
+	output.waitForAMessage()
+	output.waitForAMessage()
+
+	if len(output.sentMessages) != 3 {
+		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
+	}
+
+	for i := 0; i < 2; i++ {
+		joinedBatch, err := ic.RowsBatchFromString(string(output.sentMessages[i]))
+		if err != nil {
+			t.Fatalf("Failed to unmarshal output message: %s", err)
+		}
+
+		for _, row := range joinedBatch.Rows {
+			name := row[0].(string)
+			department := row[1].(string)
+
+			expectedDepartment, exists := expectedJoinedRows[name]
+			if !exists {
+				t.Errorf("Unexpected name %s in output", name)
+			} else if department != expectedDepartment {
+				t.Errorf("For name %s, expected department %s, got %s", name, expectedDepartment, department)
+			}
+			delete(expectedJoinedRows, name)
+		}
+	}
+
+	if len(expectedJoinedRows) != 0 {
+		t.Errorf("Some expected rows were not found in output: %v", expectedJoinedRows)
+	}
+
+	lastBatch, err := ic.RowsBatchFromString(string(output.sentMessages[2]))
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %s", err)
+	}
+	if !lastBatch.IsEndSignal() {
+		t.Fatalf("Expected end signal in last message")
+	}
+}
