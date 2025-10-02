@@ -168,7 +168,7 @@ func parseToFloat64(value interface{}) (float64, error) {
 	case string:
 		return strconv.ParseFloat(v, 64)
 	default:
-		return 0, errors.New(fmt.Sprintf("value of type %T cannot be converted to float64", value))
+		return 0, fmt.Errorf("value of type %T cannot be converted to float64", value)
 	}
 }
 
@@ -202,10 +202,12 @@ func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		}
 
 		if timestamp.Year() == 2024 || timestamp.Year() == 2025 {
+			year_month := fmt.Sprintf("%d-%d", timestamp.Year(), int(timestamp.Month()))
+			row = append(row, year_month)
 			filteredRows = append(filteredRows, row)
 		}
 	}
-
+	batch.ColumnNames = append(batch.ColumnNames, "year-month")
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
 		EndSignal:   false,

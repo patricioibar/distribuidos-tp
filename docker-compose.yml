@@ -236,6 +236,190 @@ services:
     networks:
       - coffee_analysis_net
 
+  # Transaction Items Filter
+  filter-items-year-1:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-items-year-1
+    environment:
+      FILTER_ID: "filter-items-year-1"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TIbyYear"
+      CONSUMER_NAME: "filter-items-year"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "transaction_items"
+      OUTPUT_EXCHANGE: "filtered-years-items"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-items-year-2:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-items-year-2
+    environment:
+      FILTER_ID: "filter-items-year-2"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TIbyYear"
+      CONSUMER_NAME: "filter-items-year"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "transaction_items"
+      OUTPUT_EXCHANGE: "filtered-years-items"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-items-year-3:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-items-year-3
+    environment:
+      FILTER_ID: "filter-items-year-3"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TIbyYear"
+      CONSUMER_NAME: "filter-items-year"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "transaction_items"
+      OUTPUT_EXCHANGE: "filtered-years-items"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  # Query 2 Workers
+  
+  ## Aggregators
+  items-aggregator-1:
+    image: aggregator:latest
+    container_name: items-aggregator-1
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "items-aggregator-1"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year-month\",\"item_id\"]"
+      AGGREGATIONS: "[{\"col\":\"subtotal\",\"func\":\"sum\"},{\"col\":\"quantity\",\"func\":\"sum\"}]"
+      QUERY_NAME: "items"
+      INPUT_NAME: "filtered-years-items"
+      OUTPUT_NAME: "items-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+  
+  items-aggregator-2:
+    image: aggregator:latest
+    container_name: items-aggregator-2
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "items-aggregator-2"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year-month\",\"item_id\"]"
+      AGGREGATIONS: "[{\"col\":\"subtotal\",\"func\":\"sum\"},{\"col\":\"quantity\",\"func\":\"sum\"}]"
+      QUERY_NAME: "items"
+      INPUT_NAME: "filtered-years-items"
+      OUTPUT_NAME: "items-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  items-aggregator-3:
+    image: aggregator:latest
+    container_name: items-aggregator-3
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "items-aggregator-3"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year-month\",\"item_id\"]"
+      AGGREGATIONS: "[{\"col\":\"subtotal\",\"func\":\"sum\"},{\"col\":\"quantity\",\"func\":\"sum\"}]"
+      QUERY_NAME: "items"
+      INPUT_NAME: "filtered-years-items"
+      OUTPUT_NAME: "items-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  ## Reducer
+  items-reducer:
+    image: aggregator:latest
+    container_name: items-reducer
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "items-reducer"
+      WORKERS_COUNT: 1
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year-month\",\"item_id\"]"
+      AGGREGATIONS: "[{\"col\":\"sum_subtotal\",\"func\":\"sum\"},{\"col\":\"sum_quantity\",\"func\":\"sum\"}]"
+      QUERY_NAME: "items"
+      INPUT_NAME: "items-reducer_input"
+      OUTPUT_NAME: "items-reducer_output"
+      LOG_LEVEL: "DEBUG"
+      RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
+      OUTPUT_BATCH_SIZE: 50
+      IS_REDUCER: "true"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  ## Joiners
+  items-names-joiner:
+    image: joiner:latest
+    container_name: items-names-joiner
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "items-names-joiner"
+      WORKERS_COUNT: 1
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "item_id"
+      QUERY_NAME: "items"
+      RIGHT_INPUT_NAME: "items-reducer_output"
+      LEFT_INPUT_NAME: "menu_items"
+      OUTPUT_NAME: "items-birthdate-joiner_output"
+      LOG_LEVEL: "DEBUG"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+  
   # Query 3 Workers
   
   ## Aggregators
