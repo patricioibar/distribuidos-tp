@@ -1,0 +1,47 @@
+# Build artifacts
+filter
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation (except README)
+*.md
+!README.md
+
+# Test files (optional - comment out if you want tests in container)
+*_test.go
+TEST_README.md
+
+# Log files
+*.log
+
+# Temporary files
+tmp/
+temp/
