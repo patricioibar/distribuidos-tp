@@ -413,14 +413,14 @@ services:
       OUTPUT_NAME: "query2_sink"
       LOG_LEVEL: "DEBUG"
       OUTPUT_BATCH_SIZE: 200
-      OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
+      OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"subtotal_or_quantity\"]"
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - coffee_analysis_net
   
-  # # Query 3 Workers
+  # Query 3 Workers
   
   ## Aggregators
   tpv-aggregator-1:

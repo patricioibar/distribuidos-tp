@@ -92,7 +92,12 @@ func anyRowsToStringRows(rows [][]any) [][]string {
 	for i, row := range rows {
 		stringRows[i] = make([]string, len(row))
 		for j, col := range row {
-			stringRows[i][j] = fmt.Sprintf("%v", col)
+			switch v := col.(type) {
+			case float32, float64:
+				stringRows[i][j] = fmt.Sprintf("%.2f", v)
+			default:
+				stringRows[i][j] = fmt.Sprintf("%v", col)
+			}
 		}
 	}
 	return stringRows
@@ -103,7 +108,12 @@ func genericRowsToStringRows(rows [][]interface{}) [][]string {
 	for i, row := range rows {
 		stringRows[i] = make([]string, len(row))
 		for j, col := range row {
-			stringRows[i][j] = fmt.Sprintf("%v", col)
+			switch v := col.(type) {
+			case float32, float64:
+				stringRows[i][j] = fmt.Sprintf("%.2f", v)
+			default:
+				stringRows[i][j] = fmt.Sprintf("%v", col)
+			}
 		}
 	}
 	return stringRows
