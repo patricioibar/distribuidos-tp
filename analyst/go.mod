@@ -2,7 +2,7 @@ module analyst
 
 go 1.25
 
-replace github.com/patricioibar/distribuidos-tp/communication => ../communication
+replace communication => ../communication
 
 require (
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	communication v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
