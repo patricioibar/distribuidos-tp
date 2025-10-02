@@ -3,6 +3,7 @@ package filter
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/op/go-logging"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -70,17 +71,20 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 			done <- nil
 			return
 		}
+		log.Infof("Worker %s received batch with %d rows (EndSignal: %v), batch: %v", f.filterId, len(batch.Rows), batch.EndSignal, batch)
 
 		if len(batch.Rows) != 0 {
 			filteredBatch, err := filterFunction(batch)
 			if err != nil {
 				log.Errorf("Failed to filter rows by year: %v", err)
-				done <- &mw.MessageMiddlewareError{
-					Code: mw.MessageMiddlewareMessageError,
-					Msg: "Failed to filter rows: " + err.Error(),
-				}
+				// done <- &mw.MessageMiddlewareError{
+				// 	Code: mw.MessageMiddlewareMessageError,
+				// 	Msg: "Failed to filter rows: " + err.Error(),
+				// }
+				time.Sleep(1 * time.Second) // Prevent tight loop on error
+			} else {
+				batchChan <- filteredBatch
 			}
-			batchChan <- filteredBatch
 		}
 
 		if batch.IsEndSignal() {

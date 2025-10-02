@@ -12,14 +12,15 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	indexYear := -1
 	for i, header := range batch.ColumnNames {
-		if header == "year" {
+		if header == "created_at" {
 			indexYear = i
 			break
 		}
 	}
 
 	if indexYear == -1 {
-		return ic.RowsBatch{}, errors.New("year column not found")
+		// log.Infof("Colum names received: %v", batch.ColumnNames)
+		return ic.RowsBatch{}, errors.New("created_at column not found")
 	}
 
 	monthsOfFirstSemester := map[time.Month]bool{
@@ -38,7 +39,7 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 		tsVal, ok := row[indexYear].(string)
 		if !ok {
-			return ic.RowsBatch{}, errors.New("year column is not a string")
+			return ic.RowsBatch{}, errors.New("created_at column is not a string")
 		}
 		timestamp, err := parseTimestamp(tsVal)
 		if err != nil {
@@ -68,14 +69,14 @@ func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	indexTimestamp := -1
 	for i, header := range batch.ColumnNames {
-		if header == "timestamp" {
+		if header == "created_at" {
 			indexTimestamp = i
 			break
 		}
 	}
 
 	if indexTimestamp == -1 {
-		return ic.RowsBatch{}, errors.New("timestamp column not found")
+		return ic.RowsBatch{}, errors.New("created_at column not found")
 	}
 
 	for _, row := range batch.Rows {
@@ -149,14 +150,14 @@ func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	indexYear := -1
 	for i, header := range batch.ColumnNames {
-		if header == "year" {
+		if header == "created_at" {
 			indexYear = i
 			break
 		}
 	}
 
 	if indexYear == -1 {
-		return ic.RowsBatch{}, errors.New("year column not found")
+		return ic.RowsBatch{}, errors.New("created_at column not found")
 	}
 
 	for _, row := range batch.Rows {

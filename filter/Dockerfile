@@ -2,24 +2,24 @@
 # Stage 1: Build stage
 FROM golang:1.25-alpine AS builder
 
-# Set working directory
-WORKDIR /app
+# Set working directory to root to maintain relative paths
+WORKDIR /build
 
 # Install git (needed for go mod download)
 RUN apk add --no-cache git
 
-# Copy go mod files first for better layer caching
-COPY go.mod go.sum ./
+# Copy dependency modules (maintaining relative structure)
+COPY innercommunication ./innercommunication
+COPY middleware ./middleware
 
-# Copy dependency modules (required due to local replace directives)
-COPY ../innercommunication /app/innercommunication
-COPY ../middleware /app/middleware
+# Copy filter module
+COPY filter ./filter
+
+# Change to filter directory and build
+WORKDIR /build/filter
 
 # Download dependencies
 RUN go mod download
-
-# Copy source code
-COPY . .
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o filter .
@@ -38,11 +38,10 @@ RUN addgroup -g 1001 -S filtergroup && \
 WORKDIR /app
 
 # Copy the binary from builder stage
-COPY --from=builder /app/filter .
-COPY --from=builder /app/test_signals.sh .
+COPY --from=builder /build/filter/filter .
 
-# Make scripts executable
-RUN chmod +x filter test_signals.sh
+# Make binary executable
+RUN chmod +x filter
 
 # Change ownership to non-root user
 RUN chown -R filteruser:filtergroup /app

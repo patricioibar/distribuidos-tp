@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # RabbitMQ for testing
   rabbitmq:
@@ -21,7 +19,9 @@ services:
 
   # Filter service - TbyYear
   filter-tbyear:
-    build: .
+    build:
+      context: ..
+      dockerfile: filter/Dockerfile
     container_name: filter-tbyear
     environment:
       FILTER_ID: "filter-worker-1"
@@ -38,7 +38,9 @@ services:
 
   # Filter service - TbyHour  
   filter-tbyhour:
-    build: .
+    build:
+      context: ..
+      dockerfile: filter/Dockerfile
     container_name: filter-tbyhour
     environment:
       FILTER_ID: "filter-worker-2"
@@ -55,7 +57,9 @@ services:
 
   # Filter service - TbyAmount
   filter-tbyamount:
-    build: .
+    build:
+      context: ..
+      dockerfile: filter/Dockerfile
     container_name: filter-tbyamount
     environment:
       FILTER_ID: "filter-worker-3"
