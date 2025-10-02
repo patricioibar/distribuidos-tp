@@ -114,6 +114,7 @@ func (s *ServerConnection) getResponses() {
 
 		responseChan, exists := responseWriter[batch.QueryId]
 		if !exists {
+			log.Infof("Receiving responses for query %d", batch.QueryId)
 			doneWritting := make(chan struct{})
 			responseChan = make(chan c.QueryResponseBatch)
 			responseWriter[batch.QueryId] = responseChan
@@ -132,14 +133,13 @@ func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch, d
 		log.Errorf("Failed to create file %s: %v", fileName, err)
 		return
 	}
-	defer file.Close()
 
 	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	firstBatch := <-responseChan
 	if err := writer.Write(firstBatch.Columns); err != nil {
 		log.Errorf("Failed to write header to file %s: %v", fileName, err)
+		file.Close()
 		return
 	}
 	for _, row := range firstBatch.Rows {
@@ -155,7 +155,10 @@ func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch, d
 			}
 		}
 	}
+	writer.Flush()
+	file.Close()
 	close(done)
+	log.Infof("Finished writing responses for query %d to file %s", queryId, fileName)
 }
 
 func (s *ServerConnection) WaitForResults() {

@@ -56,7 +56,6 @@ func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket) {
 
 	firstBatch, err := s.ReadBatch()
 	if err != nil {
-		log.Errorf("Error reading batch: %v", err)
 		return
 	}
 	if communication.IsResponseRequest(firstBatch) {

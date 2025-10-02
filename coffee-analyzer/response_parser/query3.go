@@ -3,6 +3,7 @@ package responseparser
 import (
 	c "communication"
 	"encoding/json"
+	"strings"
 
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
@@ -10,7 +11,6 @@ import (
 
 func (rp *ResponseParser) parseQuery3Response() mw.OnMessageCallback {
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-
 		jsonStr := string(msg.Body)
 		batch, err := ic.RowsBatchFromString(jsonStr)
 
@@ -27,10 +27,17 @@ func (rp *ResponseParser) parseQuery3Response() mw.OnMessageCallback {
 			return
 		}
 
+		for i, col := range batch.ColumnNames {
+			if strings.Contains(col, "sum") {
+				batch.ColumnNames[i] = "tpv"
+				break
+			}
+		}
+
 		parsedBatch := c.QueryResponseBatch{
 			QueryId: 3,
 			Columns: batch.ColumnNames,
-			Rows:    anyRowsToStringRows(batch.Rows),
+			Rows:    genericRowsToStringRows(batch.Rows),
 		}
 
 		data, err := json.Marshal(parsedBatch)

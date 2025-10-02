@@ -54,6 +54,9 @@ services:
     networks:
       - coffee_analysis_net
 
+  # Transaction Filters
+
+  ## Filters by Year
   filter-tbyear-1:
     image: filter:latest
     build:
@@ -117,6 +120,7 @@ services:
     networks:
       - coffee_analysis_net
     
+  ## Filters by Hour
   filter-tbyhour-1:
     build:
       context: .
@@ -174,6 +178,7 @@ services:
     networks:
       - coffee_analysis_net
 
+  ## Filters by Amount
   filter-tbyamount-1:
     build:
       context: .
@@ -225,6 +230,131 @@ services:
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       SOURCE_QUEUE: "filtered-transactions-yearhour"
       OUTPUT_EXCHANGE: "query1_sink"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  # Query 3 Workers
+  
+  ## Aggregators
+  tpv-aggregator-1:
+    image: aggregator:latest
+    container_name: tpv-aggregator-1
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "tpv-aggregator-1"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year\",\"semester\",\"store_id\"]"
+      AGGREGATIONS: "[{\"col\":\"final_amount\",\"func\":\"sum\"}]"
+      QUERY_NAME: "tpv"
+      INPUT_NAME: "filtered-transactions-yearhour"
+      OUTPUT_NAME: "tpv-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+  
+  tpv-aggregator-2:
+    image: aggregator:latest
+    container_name: tpv-aggregator-2
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "tpv-aggregator-2"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year\",\"semester\",\"store_id\"]"
+      AGGREGATIONS: "[{\"col\":\"final_amount\",\"func\":\"sum\"}]"
+      QUERY_NAME: "tpv"
+      INPUT_NAME: "filtered-transactions-yearhour"
+      OUTPUT_NAME: "tpv-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  tpv-aggregator-3:
+    image: aggregator:latest
+    container_name: tpv-aggregator-3
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "tpv-aggregator-3"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year\",\"semester\",\"store_id\"]"
+      AGGREGATIONS: "[{\"col\":\"final_amount\",\"func\":\"sum\"}]"
+      QUERY_NAME: "tpv"
+      INPUT_NAME: "filtered-transactions-yearhour"
+      OUTPUT_NAME: "tpv-reducer_input"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "false"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  ## Reducer
+  tpv-reducer:
+    image: aggregator:latest
+    container_name: tpv-reducer
+    build:
+      context: .
+      dockerfile: aggregator/Dockerfile
+    environment:
+      WORKER_ID: "tpv-reducer"
+      WORKERS_COUNT: 1
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      GROUP_BY: "[\"year\",\"semester\",\"store_id\"]"
+      AGGREGATIONS: "[{\"col\":\"sum_final_amount\",\"func\":\"sum\"}]"
+      QUERY_NAME: "tpv"
+      INPUT_NAME: "tpv-reducer_input"
+      OUTPUT_NAME: "tpv-reducer_output"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      IS_REDUCER: "true"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  ## Joiners
+  tpv-joiner1:
+    image: joiner:latest
+    container_name: tpv-joiner1
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "tpv-joiner1"
+      WORKERS_COUNT: 1
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "store_id"
+      QUERY_NAME: "tpv"
+      RIGHT_INPUT_NAME: "stores"
+      LEFT_INPUT_NAME: "tpv-reducer_output"
+      OUTPUT_NAME: "query3_sink"
+      LOG_LEVEL: "DEBUG"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
     depends_on:
       rabbitmq:
         condition: service_healthy
