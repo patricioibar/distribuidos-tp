@@ -29,7 +29,7 @@ func (rp *ResponseParser) parseQuery1Response() mw.OnMessageCallback {
 		parsedBatch := c.QueryResponseBatch{
 			QueryId: 1,
 			Columns: batch.ColumnNames,
-			Rows:    batch.Rows,
+			Rows:    anyRowsToStringRows(batch.Rows),
 		}
 
 		data, err := json.Marshal(parsedBatch)

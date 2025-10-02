@@ -1,7 +1,8 @@
 package main
 
 import (
-	"communication"
+	c "communication"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,13 +10,15 @@ import (
 	"path/filepath"
 )
 
+const responsesDir = "responses"
+
 type ServerConnection struct {
 	BatchSize             int
 	CoffeeAnalyzerAddress string
 }
 
 func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
-	socket := communication.Socket{}
+	socket := c.Socket{}
 	dir := fmt.Sprintf("%s/%s", dataDir, table.Name)
 
 	err := socket.Connect(s.CoffeeAnalyzerAddress)
@@ -64,7 +67,7 @@ func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 }
 
 func (s *ServerConnection) getResponses() {
-	socket := communication.Socket{}
+	socket := c.Socket{}
 	err := socket.Connect(s.CoffeeAnalyzerAddress)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
@@ -74,8 +77,10 @@ func (s *ServerConnection) getResponses() {
 
 	socket.SendGetResponsesRequest()
 
+	responseWriter := make(map[int]chan c.QueryResponseBatch)
+
 	for {
-		_, err := socket.ReadBatch()
+		data, err := socket.ReadBatch()
 		if err != nil {
 			if err == io.EOF {
 				log.Infof("All responses received.")
@@ -83,6 +88,51 @@ func (s *ServerConnection) getResponses() {
 			log.Errorf("Error reading batch: %v", err)
 			break
 		}
-		panic("to do: get responses")
+		var batch c.QueryResponseBatch
+		err = json.Unmarshal(data, &batch)
+		if err != nil {
+			log.Errorf("Failed to unmarshal response: %v", err)
+			continue
+		}
+
+		responseChan, exists := responseWriter[batch.QueryId]
+		if !exists {
+			responseChan = make(chan c.QueryResponseBatch)
+			responseWriter[batch.QueryId] = responseChan
+			go writeResponsesToFile(batch.QueryId, responseChan)
+		}
+		responseChan <- batch
+	}
+}
+
+func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch) {
+	fileName := fmt.Sprintf("%s/query_%d.csv", responsesDir, queryId)
+	file, err := os.Create(fileName)
+	if err != nil {
+		log.Errorf("Failed to create file %s: %v", fileName, err)
+		return
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	firstBatch := <-responseChan
+	if err := writer.Write(firstBatch.Columns); err != nil {
+		log.Errorf("Failed to write header to file %s: %v", fileName, err)
+		return
+	}
+	for _, row := range firstBatch.Rows {
+		if err := writer.Write(row); err != nil {
+			log.Errorf("Failed to write row to file %s: %v", fileName, err)
+		}
+	}
+
+	for batch := range responseChan {
+		for _, row := range batch.Rows {
+			if err := writer.Write(row); err != nil {
+				log.Errorf("Failed to write row to file %s: %v", fileName, err)
+			}
+		}
 	}
 }

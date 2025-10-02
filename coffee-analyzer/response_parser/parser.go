@@ -2,6 +2,7 @@ package responseparser
 
 import (
 	"communication"
+	"fmt"
 
 	"github.com/op/go-logging"
 
@@ -79,4 +80,15 @@ func (rp *ResponseParser) Start(s *communication.Socket) {
 	for _, sink := range rp.querySinks {
 		sink.consumer.Close()
 	}
+}
+
+func anyRowsToStringRows(rows [][]interface{}) [][]string {
+	stringRows := make([][]string, len(rows))
+	for i, row := range rows {
+		stringRows[i] = make([]string, len(row))
+		for j, col := range row {
+			stringRows[i][j] = fmt.Sprintf("%v", col)
+		}
+	}
+	return stringRows
 }

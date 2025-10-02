@@ -49,7 +49,7 @@ type Message struct {
 }
 
 type QueryResponseBatch struct {
-	QueryId int      `json:"query-id"`
-	Columns []string `json:"columns"`
-	Rows    [][]any  `json:"rows"`
+	QueryId int        `json:"query-id"`
+	Columns []string   `json:"columns"`
+	Rows    [][]string `json:"rows"`
 }
