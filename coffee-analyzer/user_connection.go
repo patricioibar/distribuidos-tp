@@ -84,7 +84,7 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	for {
 		data, err := s.ReadBatch()
 		if err != nil {
-			log.Errorf("Error reading batch: %v", err)
+			log.Infof("Finished receiving table %v: %v", table, err)
 			break
 		}
 		var payload [][]interface{}
