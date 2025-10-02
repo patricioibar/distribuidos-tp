@@ -88,7 +88,7 @@ func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.Mess
 	case <-shutdownComplete:
 		log.Info("Graceful shutdown completed successfully.")
 	case <-time.After(shutdownTimeout):
-		log.Warning("Graceful shutdown timed out after %v. Forcing exit.", shutdownTimeout)
+		log.Warningf("Graceful shutdown timed out after %v. Forcing exit.", shutdownTimeout)
 	}
 }
 
