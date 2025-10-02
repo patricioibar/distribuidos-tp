@@ -94,7 +94,7 @@ var endSignal, _ = ic.NewEndSignal().Marshal()
 
 func TestJoinMultipleRows(t *testing.T) {
 	leftColumns := []string{"id", "name"}
-	leftRows := [][]any{
+	leftRows := [][]interface{}{
 		{1, "Alice"},
 		{2, "Bob"},
 		{3, "Charlie"},
@@ -102,7 +102,7 @@ func TestJoinMultipleRows(t *testing.T) {
 		{5, "Eve"},
 	}
 	rightColumns := []string{"id", "department"}
-	rightRows := [][]any{
+	rightRows := [][]interface{}{
 		{1, "HR"},
 		{2, "Engineering"},
 		{7, "Marketing"},
@@ -118,7 +118,7 @@ func TestJoinMultipleRows(t *testing.T) {
 		BatchSize:     10,
 	}
 
-	expectedJoinedRows := [][]any{
+	expectedJoinedRows := [][]interface{}{
 		{1, "Alice", "HR"},
 		{2, "Bob", "Engineering"},
 		{5, "Eve", "Finance"},
@@ -188,12 +188,12 @@ func TestJoinMultipleRows(t *testing.T) {
 
 func TestJoinNoMatches(t *testing.T) {
 	leftColumns := []string{"id", "name"}
-	leftRows := [][]any{
+	leftRows := [][]interface{}{
 		{1, "Alice"},
 		{2, "Bob"},
 	}
 	rightColumns := []string{"id", "department"}
-	rightRows := [][]any{
+	rightRows := [][]interface{}{
 		{3, "HR"},
 		{4, "Engineering"},
 	}
@@ -250,16 +250,16 @@ func TestJoinNoMatches(t *testing.T) {
 
 func TestJoinMultipleBatches(t *testing.T) {
 	leftColumns := []string{"name", "id"}
-	leftRows1 := [][]any{
+	leftRows1 := [][]interface{}{
 		{"Alice", 1},
 		{"Bob", 2},
 	}
-	leftRows2 := [][]any{
+	leftRows2 := [][]interface{}{
 		{"Charlie", 3},
 		{"Diana", 4},
 	}
 	rightColumns := []string{"id", "department", "trassh"}
-	rightRows := [][]any{
+	rightRows := [][]interface{}{
 		{1, "HR", "Trash"},
 		{2, "Engineering", "Trash"},
 		{3, "Marketing", "Trash"},
@@ -349,20 +349,20 @@ func TestJoinMultipleBatches(t *testing.T) {
 
 func TestMultipleJoiners(t *testing.T) {
 	leftColumns := []string{"id", "name"}
-	leftRows1 := [][]any{
+	leftRows1 := [][]interface{}{
 		{1, "Alice"},
 		{6, "Frank"},
 	}
-	leftRows2 := [][]any{
+	leftRows2 := [][]interface{}{
 		{5, "Eve"},
 		{2, "Bob"},
 	}
-	leftRows3 := [][]any{
+	leftRows3 := [][]interface{}{
 		{3, "Charlie"},
 		{4, "Diana"},
 	}
 	rightColumns := []string{"id", "department"}
-	rightRows := [][]any{
+	rightRows := [][]interface{}{
 		{1, "HR"},
 		{2, "Engineering"},
 		{3, "Marketing"},

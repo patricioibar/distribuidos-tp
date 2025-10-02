@@ -67,7 +67,7 @@ func AssertIsEndSignal(t *testing.T, end_signal string) {
 func AssertOutputMatches(
 	t *testing.T,
 	expectedColumns []string,
-	expectedRows [][]any,
+	expectedRows [][]interface{},
 	gotString ...string,
 ) {
 	var gotBatches []*ic.RowsBatch
@@ -97,7 +97,7 @@ func AssertOutputMatches(
 		gotBatches = append(gotBatches, batch)
 	}
 
-	mergedRows := [][]any{}
+	mergedRows := [][]interface{}{}
 	for _, batch := range gotBatches {
 		mergedRows = append(mergedRows, batch.Rows...)
 	}

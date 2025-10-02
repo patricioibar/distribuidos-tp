@@ -4,7 +4,7 @@ import "fmt"
 
 type TableCache struct {
 	Columns []string
-	Rows    [][]any
+	Rows    [][]interface{}
 }
 
 func NewTableCache(columns []string) (*TableCache, error) {
@@ -13,11 +13,11 @@ func NewTableCache(columns []string) (*TableCache, error) {
 	}
 	return &TableCache{
 		Columns: columns,
-		Rows:    make([][]any, 0),
+		Rows:    make([][]interface{}, 0),
 	}, nil
 }
 
-func (tc *TableCache) AddRow(row []any) error {
+func (tc *TableCache) AddRow(row []interface{}) error {
 	if len(row) != len(tc.Columns) {
 		return fmt.Errorf("row length %d does not match columns length %d", len(row), len(tc.Columns))
 	}

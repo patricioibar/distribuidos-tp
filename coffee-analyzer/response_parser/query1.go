@@ -36,12 +36,12 @@ func (rp *ResponseParser) parseQuery1Response() mw.OnMessageCallback {
 		parsedBatch := c.QueryResponseBatch{
 			QueryId: 1,
 			Columns: query1OutputColumns,
-			Rows:    anyRowsToStringRows(rows),
+			Rows:    genericRowsToStringRows(rows),
 		}
 
 		data, err := json.Marshal(parsedBatch)
 		if err != nil {
-			log.Errorf("Failed to marshabatch.ColumnNamesl response: %v", err)
+			log.Errorf("Failed to marshal response: %v", err)
 			done <- nil
 			return
 		}
@@ -52,11 +52,11 @@ func (rp *ResponseParser) parseQuery1Response() mw.OnMessageCallback {
 	}
 }
 
-func retainColumns(batch *ic.RowsBatch, query1OutputColumns []string) [][]any {
+func retainColumns(batch *ic.RowsBatch, query1OutputColumns []string) [][]interface{} {
 	colIndices := getColIndices(query1OutputColumns, batch)
-	retainedRows := make([][]any, len(batch.Rows))
+	retainedRows := make([][]interface{}, len(batch.Rows))
 	for i, row := range batch.Rows {
-		newRow := make([]any, len(colIndices))
+		newRow := make([]interface{}, len(colIndices))
 		for j, colIdx := range colIndices {
 			newRow[j] = row[colIdx]
 		}

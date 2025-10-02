@@ -8,9 +8,9 @@ import (
 	cmp "cmp"
 )
 
-// Entry almacena una Key arbitraria (any) y un Value ordenable
+// Entry almacena una Key arbitraria (interface{}) y un Value ordenable
 type Entry[V cmp.Ordered] struct {
-	Key   any
+	Key   interface{}
 	Aggs  []a.Aggregation
 	Value V
 }
@@ -28,8 +28,8 @@ func (h entryHeap[V]) Less(i, j int) bool {
 	}
 	return h.items[i].Value > h.items[j].Value // max-heap para top menores
 }
-func (h *entryHeap[V]) Push(x any) { h.items = append(h.items, x.(Entry[V])) }
-func (h *entryHeap[V]) Pop() any {
+func (h *entryHeap[V]) Push(x interface{}) { h.items = append(h.items, x.(Entry[V])) }
+func (h *entryHeap[V]) Pop() interface{} {
 	old := h.items
 	n := len(old)
 	x := old[n-1]

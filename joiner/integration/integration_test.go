@@ -11,7 +11,7 @@ func TestInputOutput(t *testing.T) {
 	rightInput := []ic.RowsBatch{
 		{
 			ColumnNames: []string{"store_id", "user_id", "purchases_qty"},
-			Rows: [][]any{
+			Rows: [][]interface{}{
 				{"store-1", "john", 10},
 				{"store-2", "mary", 20},
 				{"store-3", "david", 30},
@@ -24,7 +24,7 @@ func TestInputOutput(t *testing.T) {
 	leftInput := []ic.RowsBatch{
 		{
 			ColumnNames: []string{"birth_date", "account_type", "user_id"},
-			Rows: [][]any{
+			Rows: [][]interface{}{
 				{"1990-01-01", "premium", "john"},
 				{"1985-07-15", "basic", "alice"},
 				{"1988-11-23", "premium", "bob"},
@@ -37,7 +37,7 @@ func TestInputOutput(t *testing.T) {
 		},
 		{
 			ColumnNames: []string{"birth_date", "account_type", "user_id"},
-			Rows: [][]any{
+			Rows: [][]interface{}{
 				{"1986-04-10", "premium", "ivan"},
 				{"1994-06-22", "basic", "judy"},
 				{"1991-02-02", "basic", "mary"},
@@ -52,7 +52,7 @@ func TestInputOutput(t *testing.T) {
 		},
 		{
 			ColumnNames: []string{"birth_date", "account_type", "user_id"},
-			Rows: [][]any{
+			Rows: [][]interface{}{
 				{"1981-05-21", "premium", "sybil"},
 				{"1993-09-17", "basic", "zara"},
 				{"1987-11-11", "premium", "nina"},
@@ -75,7 +75,7 @@ func TestInputOutput(t *testing.T) {
 	utils.AssertOutputMatches(
 		t,
 		[]string{"store_id", "birth_date", "purchases_qty"},
-		[][]any{
+		[][]interface{}{
 			{"store-1", "1990-01-01", 10},
 			{"store-2", "1991-02-02", 20},
 			{"store-3", "1992-03-03", 30},

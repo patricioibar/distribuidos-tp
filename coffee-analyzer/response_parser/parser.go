@@ -87,22 +87,6 @@ func (rp *ResponseParser) Start(s *c.Socket) {
 	}
 }
 
-func anyRowsToStringRows(rows [][]any) [][]string {
-	stringRows := make([][]string, len(rows))
-	for i, row := range rows {
-		stringRows[i] = make([]string, len(row))
-		for j, col := range row {
-			switch v := col.(type) {
-			case float32, float64:
-				stringRows[i][j] = fmt.Sprintf("%.2f", v)
-			default:
-				stringRows[i][j] = fmt.Sprintf("%v", col)
-			}
-		}
-	}
-	return stringRows
-}
-
 func genericRowsToStringRows(rows [][]interface{}) [][]string {
 	stringRows := make([][]string, len(rows))
 	for i, row := range rows {
