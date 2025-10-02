@@ -124,7 +124,7 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	}
 
 	if indexAmount == -1 {
-		return ic.RowsBatch{}, errors.New("amount column not found")
+		return ic.RowsBatch{}, errors.New("final_amount column not found")
 	}
 
 	for _, row := range batch.Rows {
