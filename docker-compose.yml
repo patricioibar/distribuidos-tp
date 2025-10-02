@@ -54,7 +54,7 @@ services:
     networks:
       - coffee_analysis_net
 
-  # # Transaction Filters
+  # Transaction Filters
 
   ## Filters by Year
   filter-tbyear-1:
@@ -384,7 +384,7 @@ services:
       AGGREGATIONS: "[{\"col\":\"sum_subtotal\",\"func\":\"sum\"},{\"col\":\"sum_quantity\",\"func\":\"sum\"}]"
       QUERY_NAME: "items"
       INPUT_NAME: "items-reducer_input"
-      OUTPUT_NAME: "query2_sink"
+      OUTPUT_NAME: "items-reducer_output"
       LOG_LEVEL: "DEBUG"
       RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 50
@@ -410,7 +410,7 @@ services:
       QUERY_NAME: "items"
       RIGHT_INPUT_NAME: "items-reducer_output"
       LEFT_INPUT_NAME: "menu_items"
-      OUTPUT_NAME: "items-birthdate-joiner_output"
+      OUTPUT_NAME: "query2_sink"
       LOG_LEVEL: "DEBUG"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
@@ -420,7 +420,7 @@ services:
     networks:
       - coffee_analysis_net
   
-  # Query 3 Workers
+  # # Query 3 Workers
   
   ## Aggregators
   tpv-aggregator-1:
