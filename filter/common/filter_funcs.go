@@ -47,15 +47,21 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		}
 
 		if timestamp.Year() == 2024 || timestamp.Year() == 2025 {
+			// agregado de nuevas valores a las filas
 			if monthsOfFirstSemester[timestamp.Month()] {
 				row = append(row, "FirstSemester")
 			} else {
 				row = append(row, "SecondSemester")
 			}
+			row = append(row, timestamp.Year())
+			row = append(row, int(timestamp.Month()))
 			filteredRows = append(filteredRows, row)
 		}
 	}
+	// Agregado de nuevas columnas
 	batch.ColumnNames = append(batch.ColumnNames, "semester")
+	batch.ColumnNames = append(batch.ColumnNames, "year")
+	batch.ColumnNames = append(batch.ColumnNames, "month")
 	filteredBatch := ic.RowsBatch{
 		ColumnNames: batch.ColumnNames,
 		EndSignal:   false,
@@ -118,7 +124,7 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	}
 
 	if indexAmount == -1 {
-		return ic.RowsBatch{}, errors.New("final_amount column not found")
+		return ic.RowsBatch{}, errors.New("amount column not found")
 	}
 
 	for _, row := range batch.Rows {
@@ -128,7 +134,7 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 		amountVal, ok := row[indexAmount].(float64)
 		if !ok {
-			return ic.RowsBatch{}, errors.New("final_amount column is not a float64")
+			return ic.RowsBatch{}, errors.New("amount column is not a float64")
 		}
 
 		if amountVal >= 75.0 {

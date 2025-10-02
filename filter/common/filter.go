@@ -83,7 +83,12 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 				// }
 				time.Sleep(1 * time.Second) // Prevent tight loop on error
 			} else {
-				batchChan <- filteredBatch
+				log.Infof("Filter %s processed batch: %d input rows -> %d output rows", f.filterId, len(batch.Rows), len(filteredBatch.Rows))
+				if len(filteredBatch.Rows) > 0 {
+					batchChan <- filteredBatch
+				} else {
+					log.Infof("Filter %s: No rows passed the filter criteria", f.filterId)
+				}
 			}
 		}
 
@@ -113,8 +118,11 @@ func (f *FilterWorker) Start() {
 					log.Errorf("Failed to marshal batch: %v", err)
 					continue
 				}
+				log.Infof("Filter %s sending %d filtered rows to output exchange", f.filterId, len(batch.Rows))
 				if err := f.output.Send(data); err != nil {
 					log.Errorf("Failed to send message: %v", err)
+				} else {
+					log.Infof("Filter %s successfully sent batch to output exchange", f.filterId)
 				}
 		}
 	}
