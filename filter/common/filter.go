@@ -27,7 +27,7 @@ type FilterWorker struct {
 func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string) *FilterWorker {
 	batchChan := make(chan ic.RowsBatch, maxBatchBufferSize)
 	fw := &FilterWorker{
-		filterId: 	workerID,
+		filterId:        workerID,
 		input:        input,
 		output:       output,
 		filterFunction: nil,
