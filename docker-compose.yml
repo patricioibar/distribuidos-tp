@@ -1,0 +1,243 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672" # AMQP port
+      - "15672:15672" # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq # Persistent data
+      - rabbitmq_logs:/var/log/rabbitmq # Persistent logs
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coffee_analysis_net
+
+  coffee-analyzer:
+    image: coffee-analyzer:latest
+    container_name: coffee-analyzer
+    build:
+      context: .
+      dockerfile: ./coffee-analyzer/Dockerfile
+    volumes:
+      - ./coffee-analyzer/config.json:/app/config.json
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coffee_analysis_net
+
+  analyst:
+    image: analyst:latest
+    container_name: analyst
+    build:
+      context: .
+      dockerfile: ./analyst/Dockerfile
+    volumes:
+      - ./analyst/config.json:/app/config.json
+      - ./analyst/.data/:/app/.data/
+      - ./analyst/results/:/app/results/
+    depends_on:
+      coffee-analyzer:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyear-1:
+    image: filter:latest
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyear-1
+    environment:
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-tbyear-1"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyYear"
+      CONSUMER_NAME: "transactions-year-consumer"
+      SOURCE_QUEUE: "transactions"
+      OUTPUT_EXCHANGE: "filtered-transactions-year"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyear-2:
+    image: filter:latest
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyear-2
+    environment:
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-tbyear-2"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyYear"
+      CONSUMER_NAME: "transactions-year-consumer"
+      SOURCE_QUEUE: "transactions"
+      OUTPUT_EXCHANGE: "filtered-transactions-year"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyear-3:
+    image: filter:latest
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyear-3
+    environment:
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-tbyear-3"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyYear"
+      CONSUMER_NAME: "transactions-year-consumer"
+      SOURCE_QUEUE: "transactions"
+      OUTPUT_EXCHANGE: "filtered-transactions-year"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+    
+  filter-tbyhour-1:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyhour-1
+    environment:
+      FILTER_ID: "filter-tbyhour-1"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyHour"
+      CONSUMER_NAME: "transactions-hour-consumer"
+      SOURCE_QUEUE: "filtered-transactions-year"
+      OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyhour-2:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyhour-2
+    environment:
+      FILTER_ID: "filter-tbyhour-2"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyHour"
+      CONSUMER_NAME: "transactions-hour-consumer"
+      SOURCE_QUEUE: "filtered-transactions-year"
+      OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyhour-3:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyhour-3
+    environment:
+      FILTER_ID: "filter-tbyhour-3"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyHour"
+      CONSUMER_NAME: "transactions-hour-consumer"
+      SOURCE_QUEUE: "filtered-transactions-year"
+      OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyamount-1:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyamount-1
+    environment:
+      FILTER_ID: "filter-tbyamount-1"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyAmount"
+      CONSUMER_NAME: "transactions-amount-consumer"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "filtered-transactions-yearhour"
+      OUTPUT_EXCHANGE: "query1_sink"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyamount-2:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyamount-2
+    environment:
+      FILTER_ID: "filter-tbyamount-2"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyAmount"
+      CONSUMER_NAME: "transactions-amount-consumer"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "filtered-transactions-yearhour"
+      OUTPUT_EXCHANGE: "query1_sink"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  filter-tbyamount-3:
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-tbyamount-3
+    environment:
+      FILTER_ID: "filter-tbyamount-3"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyAmount"
+      CONSUMER_NAME: "transactions-amount-consumer"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      SOURCE_QUEUE: "filtered-transactions-yearhour"
+      OUTPUT_EXCHANGE: "query1_sink"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+volumes:
+  rabbitmq_data:
+  rabbitmq_logs:
+
+networks:
+  coffee_analysis_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.0.0/24

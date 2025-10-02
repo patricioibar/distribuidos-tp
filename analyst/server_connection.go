@@ -10,11 +10,22 @@ import (
 	"path/filepath"
 )
 
-const responsesDir = "responses"
+const resultsDir = "results"
 
 type ServerConnection struct {
 	BatchSize             int
 	CoffeeAnalyzerAddress string
+	doneReceivingResults  chan struct{}
+	resultWrittingDone    []chan struct{}
+}
+
+func NewServerConnection(config *Config) *ServerConnection {
+	return &ServerConnection{
+		BatchSize:             config.BatchSize,
+		CoffeeAnalyzerAddress: config.CoffeeAnalyzerAddress,
+		doneReceivingResults:  make(chan struct{}),
+		resultWrittingDone:    []chan struct{}{},
+	}
 }
 
 func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
@@ -49,17 +60,15 @@ func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 			return
 		}
 
-		header, _ := reader.getHeader()
-		headerJson, _ := json.Marshal(header)
-
-		columnsIdxs := findColumnIdxs(table, header, file)
-
-		err = socket.SendBatch(headerJson)
+		columnsJson, _ := json.Marshal(table.Columns)
+		err = socket.SendBatch(columnsJson)
 		if err != nil && err != io.EOF {
 			log.Fatalf("Failed to send header %v", err)
 			return
 		}
 
+		header, _ := reader.getHeader()
+		columnsIdxs := findColumnIdxs(table, header, file)
 		reader.SendFileTroughSocket(columnsIdxs, socket)
 	}
 
@@ -75,6 +84,14 @@ func (s *ServerConnection) getResponses() {
 	}
 	defer socket.Close()
 
+	if _, err := os.Stat(resultsDir); os.IsNotExist(err) {
+		if err := os.Mkdir(resultsDir, 0755); err != nil {
+			log.Errorf("Failed to create responses directory: %v", err)
+			return
+		}
+	}
+
+	log.Info("Requesting responses to Coffee Analyzer")
 	socket.SendGetResponsesRequest()
 
 	responseWriter := make(map[int]chan c.QueryResponseBatch)
@@ -97,16 +114,19 @@ func (s *ServerConnection) getResponses() {
 
 		responseChan, exists := responseWriter[batch.QueryId]
 		if !exists {
+			doneWritting := make(chan struct{})
 			responseChan = make(chan c.QueryResponseBatch)
 			responseWriter[batch.QueryId] = responseChan
-			go writeResponsesToFile(batch.QueryId, responseChan)
+			s.resultWrittingDone = append(s.resultWrittingDone, doneWritting)
+			go writeResponsesToFile(batch.QueryId, responseChan, doneWritting)
 		}
 		responseChan <- batch
 	}
+	close(s.doneReceivingResults)
 }
 
-func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch) {
-	fileName := fmt.Sprintf("%s/query_%d.csv", responsesDir, queryId)
+func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch, done chan struct{}) {
+	fileName := fmt.Sprintf("%s/query_%d.csv", resultsDir, queryId)
 	file, err := os.Create(fileName)
 	if err != nil {
 		log.Errorf("Failed to create file %s: %v", fileName, err)
@@ -134,5 +154,13 @@ func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch) {
 				log.Errorf("Failed to write row to file %s: %v", fileName, err)
 			}
 		}
+	}
+	close(done)
+}
+
+func (s *ServerConnection) WaitForResults() {
+	<-s.doneReceivingResults
+	for _, done := range s.resultWrittingDone {
+		<-done
 	}
 }

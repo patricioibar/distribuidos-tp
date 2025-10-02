@@ -12,14 +12,21 @@ import (
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
-
 var log = logging.MustGetLogger("log")
 
 func main() {
 	var input mw.MessageMiddleware
 	var output mw.MessageMiddleware
 
-	filterId, workersCountStr, filterType, consumerName, mwAddress, sourceQueue, outputExchange := getConfig()
+	filterId, workersCountStr, filterType, consumerName, mwAddress, sourceQueue, outputExchange, logLevel := getConfig()
+
+	level := "INFO"
+	if logLevel != "" {
+		level = logLevel
+	}
+	if err := InitLogger(level); err != nil {
+		log.Fatalf("%s", err)
+	}
 
 	// Create signal channel to handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -40,7 +47,7 @@ func main() {
 	}
 
 	filterWorker := filter.NewFilter(filterId, input, output, filterType, workersCount)
-	
+
 	// Start the filter worker in a goroutine
 	go func() {
 		log.Infof("Starting filter worker (ID: %s, Type: %s)", filterId, filterType)
@@ -53,23 +60,23 @@ func main() {
 
 	// Graceful shutdown sequence
 	shutdownGracefully(filterWorker, input, output)
-	
+
 	log.Info("Filter service shutdown completed.")
 }
 
 func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.MessageMiddleware) {
 	log.Info("Starting graceful shutdown sequence...")
-	
+
 	// Set a timeout for graceful shutdown
 	shutdownTimeout := 30 * time.Second
 	shutdownComplete := make(chan bool, 1)
-	
+
 	go func() {
 		// Step 1: Stop the filter worker
 		log.Info("Stopping filter worker...")
 		filterWorker.Close()
 		log.Info("Filter worker stopped.")
-		
+
 		// Step 2: Close input consumer (stop receiving new messages)
 		log.Info("Closing input consumer...")
 		if err := input.StopConsuming(); err != nil {
@@ -77,7 +84,7 @@ func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.Mess
 		} else {
 			log.Info("Input consumer stopped.")
 		}
-		
+
 		// Step 3: Close output producer (finish sending pending messages)
 		log.Info("Closing output producer...")
 		if err := output.StopConsuming(); err != nil {
@@ -85,10 +92,10 @@ func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.Mess
 		} else {
 			log.Info("Output producer stopped.")
 		}
-		
+
 		shutdownComplete <- true
 	}()
-	
+
 	// Wait for graceful shutdown or timeout
 	select {
 	case <-shutdownComplete:
@@ -98,8 +105,7 @@ func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.Mess
 	}
 }
 
-
-func getConfig() (string, string, string, string, string, string, string) {
+func getConfig() (string, string, string, string, string, string, string, string) {
 	// get enviroment variables for filterType, consumerName, mwAddress, sourceQueue, outputExchange
 	filterId := os.Getenv("FILTER_ID")
 	workersCount := os.Getenv("WORKERS_COUNT")
@@ -108,10 +114,30 @@ func getConfig() (string, string, string, string, string, string, string) {
 	mwAddress := os.Getenv("MW_ADDRESS")
 	sourceQueue := os.Getenv("SOURCE_QUEUE")
 	outputExchange := os.Getenv("OUTPUT_EXCHANGE")
+	logLevel := os.Getenv("LOG_LEVEL")
 	if filterType == "" || consumerName == "" || mwAddress == "" || sourceQueue == "" || outputExchange == "" {
 		log.Critical("One or more required environment variables are not set: FILTER_TYPE, CONSUMER_NAME, MW_ADDRESS, SOURCE_QUEUE, OUTPUT_EXCHANGE")
 		os.Exit(1)
 	}
 
-	return filterId, workersCount, filterType, consumerName, mwAddress, sourceQueue, outputExchange	
+	return filterId, workersCount, filterType, consumerName, mwAddress, sourceQueue, outputExchange, logLevel
+}
+
+func InitLogger(logLevel string) error {
+	baseBackend := logging.NewLogBackend(os.Stdout, "", 0)
+	format := logging.MustStringFormatter(
+		`%{time:2006-01-02 15:04:05} %{level:.5s}     %{message}`,
+	)
+	backendFormatter := logging.NewBackendFormatter(baseBackend, format)
+
+	backendLeveled := logging.AddModuleLevel(backendFormatter)
+	logLevelCode, err := logging.LogLevel(logLevel)
+	if err != nil {
+		return err
+	}
+	backendLeveled.SetLevel(logLevelCode, "")
+
+	// Set the backends to be used.
+	logging.SetBackend(backendLeveled)
+	return nil
 }

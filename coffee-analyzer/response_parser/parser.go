@@ -32,13 +32,17 @@ func NewResponseParser(queries []QueryOutput, mwAddr string) *ResponseParser {
 	if len(queries) < 4 {
 		log.Fatalf("Expected at least 4 queries, got %d", len(queries))
 	}
-	rp := ResponseParser{}
+	rp := ResponseParser{
+		queryDone: make([]chan struct{}, len(queries)),
+	}
 	var querySinks []QuerySink
 	for i, query := range queries {
-		consumer, err := mw.NewConsumer("coffee-analyzer", query.SinkName, mwAddr)
+		name := fmt.Sprintf("%s_queue", query.SinkName)
+		consumer, err := mw.NewConsumer(name, query.SinkName, mwAddr)
 		if err != nil {
 			log.Fatalf("Failed to create consumer for sink %s: %v", query.SinkName, err)
 		}
+		rp.queryDone[i] = make(chan struct{})
 		callback := rp.callbackForQuery(i + 1)
 		querySinks = append(querySinks, QuerySink{
 			cfg:      query,
@@ -82,7 +86,7 @@ func (rp *ResponseParser) Start(s *communication.Socket) {
 	}
 }
 
-func anyRowsToStringRows(rows [][]interface{}) [][]string {
+func anyRowsToStringRows(rows [][]any) [][]string {
 	stringRows := make([][]string, len(rows))
 	for i, row := range rows {
 		stringRows[i] = make([]string, len(row))

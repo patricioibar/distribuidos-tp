@@ -40,7 +40,7 @@ func (s *Socket) Connect(address string) error {
 	)
 	backoff := 100 * time.Millisecond
 	maxBackoff := 3 * time.Second
-	for attempts := 0; attempts < 5; attempts++ {
+	for attempts := 0; attempts < 10; attempts++ {
 		conn, err = net.Dial("tcp", address)
 		if err == nil {
 			s.conn = conn

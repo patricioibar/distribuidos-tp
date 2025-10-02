@@ -1,5 +1,23 @@
 {
-    "listening-address": "localhost:30001",
-    "middleware-address": "amqp://guest:guest@localhost:5672/",
-    "log-level": "debug"
+    "listening-address": "0.0.0.0:30001",
+    "middleware-address": "amqp://guest:guest@rabbitmq:5672/",
+    "log-level": "debug",
+    "queries": [
+        {
+            "query-id": 1,
+            "sink-name": "query1_sink"
+        },
+        {
+            "query-id": 2,
+            "sink-name": "query2_sink"
+        },
+        {
+            "query-id": 3,
+            "sink-name": "query3_sink"
+        },
+        {
+            "query-id": 4,
+            "sink-name": "query4_sink"
+        }
+    ]
 }

@@ -104,8 +104,8 @@ func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageM
 						return
 					}
 
-					ret := make(chan *MessageMiddlewareError)
-					go onMessageCallback(MiddlewareMessage{Body: d.Body, Headers: d.Headers}, ret)
+					ret := make(chan *MessageMiddlewareError, 1)
+					onMessageCallback(MiddlewareMessage{Body: d.Body, Headers: d.Headers}, ret)
 					err := <-ret
 					if err != nil {
 						_ = d.Nack(false, true) // requeue

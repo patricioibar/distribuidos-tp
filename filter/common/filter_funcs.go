@@ -2,6 +2,8 @@ package filter
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -132,9 +134,15 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 			return ic.RowsBatch{}, errors.New("row does not have enough columns")
 		}
 
+		var amountVal float64
 		amountVal, ok := row[indexAmount].(float64)
 		if !ok {
-			return ic.RowsBatch{}, errors.New("amount column is not a float64")
+			// Try to parse as string and convert to float64
+			var err error
+			amountVal, err = parseToFloat64(row[indexAmount])
+			if err != nil {
+				return ic.RowsBatch{}, errors.New("final_amount column could not be parsed as float64")
+			}
 		}
 
 		if amountVal >= 75.0 {
@@ -149,6 +157,19 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	}
 	return filteredBatch, nil
 
+}
+
+func parseToFloat64(value interface{}) (float64, error) {
+	switch v := value.(type) {
+	case float64:
+		return v, nil
+	case int:
+		return float64(v), nil
+	case string:
+		return strconv.ParseFloat(v, 64)
+	default:
+		return 0, errors.New(fmt.Sprintf("value of type %T cannot be converted to float64", value))
+	}
 }
 
 func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {

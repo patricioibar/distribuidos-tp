@@ -23,6 +23,7 @@ func (rp *ResponseParser) parseQuery4Response() mw.OnMessageCallback {
 		if batch.IsEndSignal() {
 			log.Infof("Received end signal for query 4")
 			done <- nil
+			rp.queryDone[3] <- struct{}{}
 			return
 		}
 

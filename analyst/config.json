@@ -1,7 +1,7 @@
 {
     "data-dir": ".data",
     "batch-size": 100,
-    "coffee-analyzer-address": "localhost:30001",
+    "coffee-analyzer-address": "coffee-analyzer:30001",
     "log-level": "info",
     "tables": [
         {
