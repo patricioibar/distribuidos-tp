@@ -139,8 +139,8 @@ func (c *Consumer) StopConsuming() *MessageMiddlewareError {
 
 func (c *Consumer) Send(message []byte) (error *MessageMiddlewareError) {
 	err := c.channel.Publish(
-		c.sourceName,
 		"",
+		c.name,
 		false,
 		false,
 		amqp.Publishing{
