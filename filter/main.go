@@ -37,7 +37,6 @@ func main() {
 	workersCount, err := strconv.Atoi(workersCountStr)
 	if err != nil {
 		log.Fatalf("Invalid WORKERS_COUNT value: %v", err)
-		return
 	}
 
 	filterWorker := filter.NewFilter(filterId, input, output, filterType, workersCount)
