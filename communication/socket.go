@@ -5,6 +5,8 @@ import (
 	"net"
 )
 
+const getResponseMessage = "GET_RESPONSES"
+
 func (s *Socket) BindAndListen(address string) error {
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
@@ -39,24 +41,6 @@ func (s *Socket) Connect(address string) error {
 	return nil
 }
 
-/*
-	func (s *Socket) SendChunksCount(numChunks int) error {
-		if s.conn == nil {
-			return net.ErrClosed
-		}
-		var buf [4]byte
-		binary.BigEndian.PutUint32(buf[:], uint32(numChunks))
-		total := 0
-		for total < len(buf) {
-			n, err := s.conn.Write(buf[total:])
-			if err != nil {
-				return err
-			}
-			total += n
-		}
-		return nil
-	}
-*/
 func (s *Socket) SendBatch(data []byte) error {
 	if s.conn == nil {
 		return net.ErrClosed
@@ -125,4 +109,16 @@ func (s *Socket) Close() error {
 		return s.listener.Close()
 	}
 	return nil
+}
+
+func (s *Socket) SendGetResponsesRequest() error {
+	if s.conn == nil {
+		return net.ErrClosed
+	}
+	request := []byte(getResponseMessage)
+	return s.SendBatch(request)
+}
+
+func IsResponseRequest(data []byte) bool {
+	return string(data) == getResponseMessage
 }

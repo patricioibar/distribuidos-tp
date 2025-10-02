@@ -1,6 +1,8 @@
 package main
 
 import (
+	rp "cofee-analyzer/response_parser"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,9 +13,10 @@ const configFilePath = "config.json"
 
 // Config represents the application's configuration structure.
 type Config struct {
-	ListeningAddress  string `json:"listening-address" mapstructure:"listening-address"`
-	MiddlewareAddress string `json:"middleware-address" mapstructure:"middleware-address"`
-	LogLevel          string `json:"log-level" mapstructure:"log-level"`
+	ListeningAddress  string           `json:"listening-address" mapstructure:"listening-address"`
+	MiddlewareAddress string           `json:"middleware-address" mapstructure:"middleware-address"`
+	LogLevel          string           `json:"log-level" mapstructure:"log-level"`
+	Queries           []rp.QueryOutput `json:"queries" mapstructure:"queries"`
 }
 
 var requiredFields = []string{
@@ -50,6 +53,17 @@ func InitConfig() (*Config, error) {
 		if !v.IsSet(field) {
 			return nil, fmt.Errorf("missing required config field: %s", field)
 		}
+	}
+
+	if s := v.GetString("queries"); s != "" {
+		var queries []rp.QueryOutput
+		if err := json.Unmarshal([]byte(s), &queries); err != nil {
+			return nil, fmt.Errorf("could not parse queries JSON: %w", err)
+		}
+		if len(queries) < 4 {
+			return nil, fmt.Errorf("expected 4 queries, got %d", len(queries))
+		}
+		v.Set("queries", queries)
 	}
 
 	var config Config

@@ -63,34 +63,26 @@ func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 	log.Infof("All files from directory %s sent successfully.", dir)
 }
 
-func sendRowsTroughSocket(rows [][]string, socket communication.Socket) {
-	data, err := json.Marshal(rows)
+func (s *ServerConnection) getResponses() {
+	socket := communication.Socket{}
+	err := socket.Connect(s.CoffeeAnalyzerAddress)
 	if err != nil {
-		log.Errorf("Failed to send batch: %v", err)
+		log.Fatalf("Failed to connect: %v", err)
 		return
 	}
+	defer socket.Close()
 
-	err = socket.SendBatch(data)
-	if err != nil {
-		log.Errorf("Failed to send batch: %v", err)
-		return
-	}
-}
+	socket.SendGetResponsesRequest()
 
-func findColumnIdxs(table TableConfig, header []string, file os.DirEntry) []int {
-	columnsIdxs := []int{}
-	for _, col := range table.Columns {
-		found := false
-		for idx, headerCol := range header {
-			if col == headerCol {
-				columnsIdxs = append(columnsIdxs, idx)
-				found = true
-				break
+	for {
+		_, err := socket.ReadBatch()
+		if err != nil {
+			if err == io.EOF {
+				log.Infof("All responses received.")
 			}
+			log.Errorf("Error reading batch: %v", err)
+			break
 		}
-		if !found {
-			log.Fatalf("Column %s not found in file %s", col, file.Name())
-		}
+		panic("to do: get responses")
 	}
-	return columnsIdxs
 }

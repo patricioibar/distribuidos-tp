@@ -1,6 +1,7 @@
 package main
 
 import (
+	responseparser "cofee-analyzer/response_parser"
 	"encoding/json"
 
 	"communication"
@@ -10,22 +11,32 @@ import (
 	"github.com/patricioibar/distribuidos-tp/middleware"
 )
 
-type UserConnection struct {
+type CoffeeAnalyzer struct {
 	Address string
 	mwAddr  string
+	parser  *responseparser.ResponseParser
 }
 
-func (u *UserConnection) Start() {
+func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
+	parser := responseparser.NewResponseParser(config.Queries, config.MiddlewareAddress)
+	return &CoffeeAnalyzer{
+		Address: config.ListeningAddress,
+		mwAddr:  config.MiddlewareAddress,
+		parser:  parser,
+	}
+}
+
+func (ca *CoffeeAnalyzer) Start() {
 	listener_socket := communication.Socket{}
 
-	err := listener_socket.BindAndListen(u.Address)
+	err := listener_socket.BindAndListen(ca.Address)
 	if err != nil {
 		log.Fatalf("Failed to bind and listen: %v", err)
 		return
 	}
 	defer listener_socket.Close()
 
-	log.Infof("Listening on %s", u.Address)
+	log.Infof("Listening on %s", ca.Address)
 
 	for {
 		client_socket, err := listener_socket.Accept()
@@ -36,22 +47,31 @@ func (u *UserConnection) Start() {
 
 		log.Infof("Accepted connection")
 
-		go handleConnection(client_socket, u.mwAddr)
+		go ca.handleConnection(client_socket)
 	}
 }
 
-func handleConnection(s *communication.Socket, mwAddr string) {
+func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket) {
 	defer s.Close()
 
-	var table string
-	tableBytes, err := s.ReadBatch()
+	firstBatch, err := s.ReadBatch()
 	if err != nil {
 		log.Errorf("Error reading batch: %v", err)
 		return
 	}
-	json.Unmarshal(tableBytes, &table)
+	if communication.IsResponseRequest(firstBatch) {
+		log.Infof("Received responses request")
+		ca.handleGetResponsesRequest(s)
+	}
+
+	ca.handleTableUpload(firstBatch, s)
+}
+
+func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.Socket) {
+	var table string
+	json.Unmarshal(firstBatch, &table)
 	log.Infof("Received table: %v", table)
-	producer, _ := middleware.NewProducer(table, mwAddr)
+	producer, _ := middleware.NewProducer(table, ca.mwAddr)
 
 	var header []string
 	headerJson, err := s.ReadBatch()
@@ -62,69 +82,19 @@ func handleConnection(s *communication.Socket, mwAddr string) {
 	json.Unmarshal(headerJson, &header)
 	log.Infof("Received header: %v", header)
 	for {
-
 		data, err := s.ReadBatch()
 		if err != nil {
 			log.Errorf("Error reading batch: %v", err)
 			break
 		}
-
-		/*message := communication.Message{
-			Type: "",
-			Data: nil,
-		}*/
 		var payload [][]interface{}
-
 		json.Unmarshal(data, &payload)
-		/*
-			switch message.Type {
-			case "TransactionItem":
-				var items []communication.TransactionItem
-				err := json.Unmarshal(message.Data, &items)
-				if err != nil {
-					log.Errorf("Failed to unmarshal TransactionItem: %v", err)
-					continue
-				}
-				log.Infof("Received %d TransactionItems", len(items))
-				// Process TransactionItems as needed
-
-			case "User":
-				var users []communication.User
-				err := json.Unmarshal(message.Data, &users)
-				if err != nil {
-					log.Errorf("Failed to unmarshal User: %v", err)
-					continue
-				}
-				log.Infof("Received %d Users", len(users))
-				// Process Users as needed
-
-			case "MenuItem":
-				var menuItems []communication.MenuItem
-				err := json.Unmarshal(message.Data, &menuItems)
-				if err != nil {
-					log.Errorf("Failed to unmarshal MenuItem: %v", err)
-					continue
-				}
-				log.Infof("Received %d MenuItems", len(menuItems))
-				// Process MenuItems as needed
-
-			case "Transaction":
-				var transactions []communication.Transaction
-				err := json.Unmarshal(message.Data, &transactions)
-				if err != nil {
-					log.Errorf("Failed to unmarshal Transaction: %v", err)
-					continue
-				}
-				log.Infof("Received %d Transactions", len(transactions))
-				// Process Transactions as needed
-
-			default:
-				log.Errorf("Unknown message type: %s", message.Type)
-			}*/
-		// log.Infof("Received payload: %+v", payload)
-
 		rowsBatch := innercommunication.NewRowsBatch(header, payload)
 		rowsBatchMarshaled, _ := rowsBatch.Marshal()
 		producer.Send(rowsBatchMarshaled)
 	}
+}
+
+func (ca *CoffeeAnalyzer) handleGetResponsesRequest(s *communication.Socket) {
+	ca.parser.Start(s)
 }

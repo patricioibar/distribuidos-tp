@@ -47,3 +47,9 @@ type Message struct {
 	Type string
 	Data json.RawMessage
 }
+
+type QueryResponseBatch struct {
+	QueryId int      `json:"query-id"`
+	Columns []string `json:"columns"`
+	Rows    [][]any  `json:"rows"`
+}

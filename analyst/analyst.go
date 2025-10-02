@@ -50,4 +50,7 @@ func main() {
 		log.Infof("Sending dataset: %s with columns: %v", table.Name, table.Columns)
 		serverConn.sendDataset(table, config.DataDir)
 	}
+
+	log.Info("All datasets sent, getting responses")
+	serverConn.getResponses()
 }

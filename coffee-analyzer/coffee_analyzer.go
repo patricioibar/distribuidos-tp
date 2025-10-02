@@ -41,10 +41,7 @@ func main() {
 		log.Criticalf("%s", err)
 	}
 
-	userConn := UserConnection{
-		Address: config.ListeningAddress,
-		mwAddr:  config.MiddlewareAddress,
-	}
+	userConn := NewCoffeeAnalyzer(config)
 
 	userConn.Start()
 
