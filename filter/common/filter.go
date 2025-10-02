@@ -71,7 +71,11 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 			done <- nil
 			return
 		}
-		log.Infof("Worker %s received batch with %d rows (EndSignal: %v), batch: %v", f.filterId, len(batch.Rows), batch.EndSignal, batch)
+		var columnNames []string
+		if batch.Columns != nil {
+			columnNames = batch.Columns
+		}
+		log.Infof("Worker %s received batch with %d rows (EndSignal: %v), columns: %v", f.filterId, len(batch.Rows), batch.EndSignal, columnNames)
 
 		if len(batch.Rows) != 0 {
 			filteredBatch, err := filterFunction(batch)
