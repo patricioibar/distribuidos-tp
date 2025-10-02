@@ -52,9 +52,3 @@ El servicio maneja señales del sistema para realizar un apagado ordenado:
 - **30 segundos** máximo para apagado graceful
 - Si no se completa en ese tiempo, fuerza la terminación
 
-### Prueba del graceful shutdown:
-
-```bash
-# Usar el script de prueba incluido
-./test_signals.sh
-```
