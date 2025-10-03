@@ -150,7 +150,6 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatch) {
 
 	for _, leftRow := range batch.Rows {
 		if leftRow == nil || len(leftRow) <= joinKeyIndexLeft {
-			log.Errorf("Invalid left row: %v", leftRow)
 			continue
 		}
 		leftKey := leftRow[joinKeyIndexLeft]
