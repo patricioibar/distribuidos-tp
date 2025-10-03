@@ -8,9 +8,9 @@ import (
 	cmp "cmp"
 )
 
-// Entry almacena una Key arbitraria (interface{}) y un Value ordenable
+// Entry almacena una Key string y un Value ordenable
 type Entry[V cmp.Ordered] struct {
-	Key   interface{}
+	Key   string
 	Aggs  []a.Aggregation
 	Value V
 }
@@ -23,11 +23,15 @@ type entryHeap[V cmp.Ordered] struct {
 func (h entryHeap[V]) Len() int      { return len(h.items) }
 func (h entryHeap[V]) Swap(i, j int) { h.items[i], h.items[j] = h.items[j], h.items[i] }
 func (h entryHeap[V]) Less(i, j int) bool {
+	if h.items[i].Value == h.items[j].Value {
+		return h.items[i].Key < h.items[j].Key // desempate por key
+	}
 	if h.largest {
 		return h.items[i].Value < h.items[j].Value // min-heap para top mayores
 	}
 	return h.items[i].Value > h.items[j].Value // max-heap para top menores
 }
+
 func (h *entryHeap[V]) Push(x interface{}) { h.items = append(h.items, x.(Entry[V])) }
 func (h *entryHeap[V]) Pop() interface{} {
 	old := h.items

@@ -109,7 +109,7 @@ func retainWithoutGrouping[V cmp.Ordered](
 	}
 
 	for _, entry := range topValues.Values() {
-		row := getRowFromKeyAndAggregations(entry.Key.(string), entry.Aggs)
+		row := getRowFromKeyAndAggregations(entry.Key, entry.Aggs)
 		result.Data = append(result.Data, row)
 	}
 
@@ -154,7 +154,7 @@ func retainGrouping[V cmp.Ordered](
 	for _, topValues := range groupedTops {
 		for _, entry := range topValues.Values() {
 			row := getRowFromKeyAndAggregations(
-				entry.Key.(string),
+				entry.Key,
 				[]a.Aggregation{entry.Aggs[valueIdx]},
 			)
 			result.Data = append(result.Data, row)
