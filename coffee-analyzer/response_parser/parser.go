@@ -43,7 +43,7 @@ func NewResponseParser(queries []QueryOutput, mwAddr string) *ResponseParser {
 		if err != nil {
 			log.Fatalf("Failed to create consumer for sink %s: %v", query.SinkName, err)
 		}
-		rp.queryDone[i] = make(chan struct{})
+		rp.queryDone[i] = make(chan struct{}, 1)
 		callback := rp.callbackForQuery(i + 1)
 		querySinks = append(querySinks, QuerySink{
 			cfg:      query,
