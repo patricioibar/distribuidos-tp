@@ -7,9 +7,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
-const resultsDir = "results"
+const parentResultsDir = "results"
 
 type ServerConnection struct {
 	BatchSize             int
@@ -83,11 +84,16 @@ func (s *ServerConnection) getResponses() {
 	}
 	defer socket.Close()
 
-	if _, err := os.Stat(resultsDir); os.IsNotExist(err) {
-		if err := os.Mkdir(resultsDir, 0755); err != nil {
+	if _, err := os.Stat(parentResultsDir); os.IsNotExist(err) {
+		if err := os.Mkdir(parentResultsDir, 0755); err != nil {
 			log.Errorf("Failed to create responses directory: %v", err)
 			return
 		}
+	}
+	resultsDir := filepath.Join(parentResultsDir, time.Now().Format("2006-01-02 15:04:05"))
+	if err := os.Mkdir(resultsDir, 0755); err != nil && !os.IsExist(err) {
+		log.Errorf("Failed to create results directory: %v", err)
+		return
 	}
 
 	log.Info("Requesting responses to Coffee Analyzer")
@@ -118,14 +124,14 @@ func (s *ServerConnection) getResponses() {
 			responseChan = make(chan c.QueryResponseBatch)
 			responseWriter[batch.QueryId] = responseChan
 			s.resultWrittingDone = append(s.resultWrittingDone, doneWritting)
-			go writeResponsesToFile(batch.QueryId, responseChan, doneWritting)
+			go writeResponsesToFile(resultsDir, batch.QueryId, responseChan, doneWritting)
 		}
 		responseChan <- batch
 	}
 	close(s.doneReceivingResults)
 }
 
-func writeResponsesToFile(queryId int, responseChan chan c.QueryResponseBatch, done chan struct{}) {
+func writeResponsesToFile(resultsDir string, queryId int, responseChan chan c.QueryResponseBatch, done chan struct{}) {
 	fileName := fmt.Sprintf("%s/query_%d.csv", resultsDir, queryId)
 	file, err := os.Create(fileName)
 	if err != nil {

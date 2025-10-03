@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+import argparse
+import csv
+import os
+import sys
+from collections import Counter
+
+def read_csv_rows(path):
+    """Lee un CSV y devuelve (header, list_of_rows_as_tuples)."""
+    rows = []
+    header = None
+    with open(path, newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        for i, r in enumerate(reader):
+            if i == 0:
+                header = tuple(r) if r else ()
+            else:
+                rows.append(tuple(r))
+    return header, rows
+
+def normalized_rows_for_compare(header1, rows1, header2, rows2):
+    """Normaliza filas y decide si comparar con o sin header."""
+    def norm_rows(rs):
+        return [tuple(cell.strip() for cell in r) for r in rs]
+
+    if header1 == header2:
+        s1 = sorted(norm_rows(rows1))
+        s2 = sorted(norm_rows(rows2))
+        return True, s1, s2
+    else:
+        # incluir headers como filas
+        all1 = []
+        if header1 is not None:
+            all1.append(tuple(cell.strip() for cell in header1))
+        all1.extend(norm_rows(rows1))
+
+        all2 = []
+        if header2 is not None:
+            all2.append(tuple(cell.strip() for cell in header2))
+        all2.extend(norm_rows(rows2))
+
+        return False, sorted(all1), sorted(all2)
+
+def diff_preview(sorted1, sorted2, max_lines=10):
+    diffs = []
+    c1 = Counter(sorted1)
+    c2 = Counter(sorted2)
+    for k in sorted(set(c1.keys()).union(c2.keys())):
+        n1 = c1.get(k, 0)
+        n2 = c2.get(k, 0)
+        if n1 != n2:
+            diffs.append(f"- {k}  (en A: {n1} / en B: {n2})")
+        if len(diffs) >= max_lines:
+            break
+    return diffs
+
+def compare_files(pathA, pathB):
+    hA, rowsA = read_csv_rows(pathA)
+    hB, rowsB = read_csv_rows(pathB)
+    same_header, sA, sB = normalized_rows_for_compare(hA, rowsA, hB, rowsB)
+    if sA == sB:
+        return {"status": "equal"}
+    else:
+        return {
+            "status": "different",
+            "same_header": same_header,
+            "diff_preview": diff_preview(sA, sB, max_lines=10),
+        }
+
+def main():
+    parser = argparse.ArgumentParser(description="Comparar .csv comunes entre dos carpetas")
+    parser.add_argument("folderA", help="Carpeta A")
+    parser.add_argument("folderB", help="Carpeta B")
+    args = parser.parse_args()
+
+    a, b = args.folderA, args.folderB
+    if not os.path.isdir(a) or not os.path.isdir(b):
+        print("ERROR: Ambos parámetros deben ser carpetas válidas.", file=sys.stderr)
+        sys.exit(2)
+
+    filesA = {f for f in os.listdir(a) if f.endswith(".csv")}
+    filesB = {f for f in os.listdir(b) if f.endswith(".csv")}
+    common = sorted(filesA & filesB)
+
+    if not common:
+        print("No hay archivos .csv en común entre las dos carpetas.")
+        sys.exit(0)
+
+    overall_equal = True
+    print(f"Comparando carpetas:\n  A: {a}\n  B: {b}\n")
+    for fname in common:
+        pathA = os.path.join(a, fname)
+        pathB = os.path.join(b, fname)
+        res = compare_files(pathA, pathB)
+        if res["status"] == "equal":
+            print(f"{fname}: IGUALES")
+        else:
+            overall_equal = False
+            print(f"{fname}: DISTINTOS")
+            if res.get("same_header"):
+                print("  (Mismo header; comparando solo cuerpo ordenado)")
+            else:
+                print("  (Header distinto; comparando todo)")
+            for line in res["diff_preview"]:
+                print("   ", line)
+        print("")
+
+    if overall_equal:
+        print("RESULTADO: Todos los archivos comunes son IGUALES.")
+    else:
+        print("RESULTADO: Se encontraron diferencias.")
+
+if __name__ == "__main__":
+    main()
