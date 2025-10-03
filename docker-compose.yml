@@ -776,7 +776,7 @@ services:
       dockerfile: joiner/Dockerfile
     environment:
       WORKER_ID: "topuser-storename-joiner"
-      WORKERS_COUNT: 3
+      WORKERS_COUNT: 1
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "store_id"
       QUERY_NAME: "topuser"
