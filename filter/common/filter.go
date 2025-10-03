@@ -130,7 +130,7 @@ func (f *FilterWorker) Close() {
 
 	// Stop consuming new messages from input
 	if f.input != nil {
-		if err := f.input.StopConsuming(); err != nil {
+		if err := f.input.Close(); err != nil {
 			log.Errorf("Failed to stop input consuming: %v", err)
 		} else {
 			log.Debug("Input consumer stopped.")
@@ -139,7 +139,7 @@ func (f *FilterWorker) Close() {
 
 	// Stop the output producer
 	if f.output != nil {
-		if err := f.output.StopConsuming(); err != nil {
+		if err := f.output.Close(); err != nil {
 			log.Errorf("Failed to stop output producer: %v", err)
 		} else {
 			log.Debug("Output producer stopped.")
