@@ -45,16 +45,18 @@ func (aw *AggregatorWorker) Start() {
 	}
 
 	<-aw.closeChan
+	aw.Close()
 }
 
 func (aw *AggregatorWorker) Close() {
+	log.Info("Closing worker...")
 	if err := aw.input.Close(); err != nil {
 		log.Errorf("Failed to close input: %v", err)
 	}
 	if err := aw.output.Close(); err != nil {
 		log.Errorf("Failed to close output: %v", err)
 	}
-	close(aw.closeChan)
+	log.Info("Successfully closed worker")
 }
 
 func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
@@ -82,9 +84,8 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 			)
 			aw.sendRetainedData(retainedData)
 			aw.PropagateEndSignal(batch)
-			aw.Close()
+			close(aw.closeChan)
 		}
-
 	}
 }
 
@@ -149,6 +150,7 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 
 		if aw.Config.DropNa {
 			if hasNil(groupByIndexes, row) || hasNil(aggIndexesToSlice(aggIndexes, aw.Config.Aggregations), row) {
+				log.Debugf("skipping row with nil: %v", row)
 				continue
 			}
 		}
@@ -184,12 +186,11 @@ func hasNil(groupByIndexes []int, row []interface{}) bool {
 		if value == nil {
 			hasNil = true
 			break
-		} else {
-			strValue, ok := value.(string)
-			if ok && strings.TrimSpace(strValue) == "" {
-				hasNil = true
-				break
-			}
+		}
+		strValue, ok := value.(string)
+		if ok && (strings.TrimSpace(strValue) == "" || strValue == "NULL") {
+			hasNil = true
+			break
 		}
 	}
 	return hasNil

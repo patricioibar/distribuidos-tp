@@ -88,11 +88,12 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 			}
 		}
 
+		done <- nil
+
 		if batch.IsEndSignal() {
 			f.handleEndSignal(&batch)
+			close(f.closeChan)
 		}
-
-		done <- nil
 
 	}, nil
 }
@@ -106,6 +107,7 @@ func (f *FilterWorker) Start() {
 	for {
 		select {
 		case <-f.closeChan:
+			f.Close()
 			return
 		case batch := <-f.batchChan:
 			data, err := json.Marshal(batch)
@@ -125,18 +127,6 @@ func (f *FilterWorker) Start() {
 
 func (f *FilterWorker) Close() {
 	log.Info("FilterWorker shutdown initiated...")
-
-	// First, signal the worker to stop processing new messages
-	select {
-	case <-f.closeChan:
-		// Already closed
-		log.Debug("FilterWorker already closed.")
-		return
-	default:
-		close(f.closeChan)
-	}
-
-	log.Debug("Stop signal sent to FilterWorker.")
 
 	// Stop consuming new messages from input
 	if f.input != nil {

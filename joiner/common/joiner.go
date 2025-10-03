@@ -40,13 +40,13 @@ func (jw *JoinerWorker) Start() {
 	}()
 
 	<-jw.closeChan
+	jw.Close()
 }
 
 func (jw *JoinerWorker) Close() {
 	jw.leftInput.Close()
 	jw.rightInput.Close()
 	jw.output.Close()
-	close(jw.closeChan)
 	log.Debugf("Worker %s closed", jw.Config.WorkerId)
 }
 
@@ -107,10 +107,11 @@ func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 		}
 
 		done <- nil
+
 		if batch.IsEndSignal() {
 			jw.sendJoinedResults()
 			jw.propagateLeftEndSignal(batch)
-			jw.Close()
+			close(jw.closeChan)
 		}
 	}
 }
@@ -161,11 +162,30 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatch) {
 			}
 			rightKey := rightRow[joinKeyIndexRight]
 
-			if leftKey == rightKey {
+			if keyMatches(leftKey, rightKey) {
 				jw.addJoinedRow(batch, leftRow, rightRow)
 			}
 		}
 	}
+}
+
+func keyMatches(leftKey interface{}, rightKey interface{}) bool {
+	// Try to compare as int
+	leftInt, leftIntOk := toInt(leftKey)
+	rightInt, rightIntOk := toInt(rightKey)
+	if leftIntOk && rightIntOk {
+		return leftInt == rightInt
+	}
+
+	// Try to compare as float
+	leftFloat, leftFloatOk := toFloat(leftKey)
+	rightFloat, rightFloatOk := toFloat(rightKey)
+	if leftFloatOk && rightFloatOk {
+		return leftFloat == rightFloat
+	}
+
+	// Fallback to string comparison
+	return toString(leftKey) == toString(rightKey)
 }
 
 func (jw *JoinerWorker) addJoinedRow(batch *ic.RowsBatch, leftRow []interface{}, rightRow []interface{}) {

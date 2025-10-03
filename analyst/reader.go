@@ -128,6 +128,10 @@ func (r *Reader) SendFileTroughSocket(columnsIdxs []int, socket communication.So
 					skip = true
 					break
 				}
+				if record[idx] == "" {
+					filtered[i] = "NULL"
+					continue
+				}
 				filtered[i] = record[idx]
 			}
 			if skip {
