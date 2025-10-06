@@ -262,12 +262,12 @@ def add_topUserReducer_service() -> str:
       WORKERS_COUNT: 1
       MIDDLEWARE_ADDRESS: "''' + MIDDLEWARE_ADDRESS + r'''"
       GROUP_BY: "[\"store_id\",\"user_id\"]"
-      AGGREGATIONS: "[{\"col\":\"sum_transaction_id\",\"func\":\"sum\"}]"
+      AGGREGATIONS: "[{\"col\":\"count_transaction_id\",\"func\":\"sum\"}]"
       QUERY_NAME: "topuser"
       INPUT_NAME: "topuser-reducer_input"
       OUTPUT_NAME: "topuser-reducer_output"
       LOG_LEVEL: "DEBUG"
-      RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"sum_transaction_id\",\"largest\":true}]"
+      RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"count_transaction_id\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 3
       IS_REDUCER: "true"
     depends_on:
@@ -300,7 +300,7 @@ def add_topUserBirthdate_joiner(nodes: int) -> str:
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
       LOG_LEVEL: "DEBUG"
       OUTPUT_BATCH_SIZE: 200
-      OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"sum_transaction_id\"]"
+      OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -329,7 +329,7 @@ def add_topUserStoreName_joiner() -> str:
       OUTPUT_NAME: "query4_sink"
       LOG_LEVEL: "DEBUG"
       OUTPUT_BATCH_SIZE: 200
-      OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"sum_transaction_id\"]"
+      OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
       rabbitmq:
         condition: service_healthy
