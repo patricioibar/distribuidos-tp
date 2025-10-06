@@ -106,8 +106,9 @@ func (s *ServerConnection) getResponses() {
 		if err != nil {
 			if err == io.EOF {
 				log.Infof("All responses received.")
+			} else {
+				log.Errorf("Error reading batch: %v", err)
 			}
-			log.Errorf("Error reading batch: %v", err)
 			break
 		}
 		var batch c.QueryResponseBatch
@@ -128,6 +129,11 @@ func (s *ServerConnection) getResponses() {
 		}
 		responseChan <- batch
 	}
+
+	for _, responseChan := range responseWriter {
+		close(responseChan)
+	}
+
 	close(s.doneReceivingResults)
 }
 
@@ -163,7 +169,6 @@ func writeResponsesToFile(resultsDir string, queryId int, responseChan chan c.Qu
 	}
 	file.Close()
 	close(done)
-	log.Infof("Finished writing responses for query %d to file %s", queryId, fileName)
 }
 
 func writeRows(rows [][]string, file *os.File, fileName string) {
