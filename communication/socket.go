@@ -4,9 +4,12 @@ import (
 	"encoding/binary"
 	"net"
 	"time"
+
+	uuid "github.com/google/uuid"
 )
 
 const getResponseMessage = "GET_RESPONSES"
+const startJobMessage = "START_JOB"
 
 func (s *Socket) BindAndListen(address string) error {
 	ln, err := net.Listen("tcp", address)
@@ -96,24 +99,6 @@ func (s *Socket) ReadBatch() ([]byte, error) {
 	return buf, nil
 }
 
-/*
-func (s *Socket) RecvAck() (uint32, error) {
-	if s.conn == nil {
-		return 0, net.ErrClosed
-	}
-	var buf [4]byte
-	total := 0
-	for total < len(buf) {
-		n, err := s.conn.Read(buf[total:])
-		if err != nil {
-			return 0, err
-		}
-		total += n
-	}
-	seq := binary.BigEndian.Uint32(buf[:])
-	return seq, nil
-}
-*/
 // Close closes the connection and listener if present.
 func (s *Socket) Close() error {
 	if s.conn != nil {
@@ -135,4 +120,44 @@ func (s *Socket) SendGetResponsesRequest() error {
 
 func IsResponseRequest(data []byte) bool {
 	return string(data) == getResponseMessage
+}
+
+func IsStartJobRequest(data []byte) bool {
+	return string(data) == startJobMessage
+}
+
+func (s *Socket) SendStartJobRequest() error {
+	if s.conn == nil {
+		return net.ErrClosed
+	}
+	request := []byte(startJobMessage)
+	return s.SendBatch(request)
+}
+
+func (s *Socket) SendUUIDResponse(uuid uuid.UUID) error {
+	if s.conn == nil {
+		return net.ErrClosed
+	}
+	data, err := uuid.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	err = s.SendBatch(data)
+	return err
+}
+
+func (s *Socket) ReceiveUUIDResponse() (uuid.UUID, error) {
+	if s.conn == nil {
+		return uuid.UUID{}, net.ErrClosed
+	}
+	data, err := s.ReadBatch()
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	var id uuid.UUID
+	err = id.UnmarshalBinary(data)
+	if err != nil {
+		return uuid.UUID{}, err
+	}
+	return id, nil
 }
