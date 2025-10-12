@@ -19,7 +19,7 @@ type Consumer struct {
 	closeOnce sync.Once
 }
 
-func NewConsumer(consumerName string, sourceName string, connectionAddr string) (*Consumer, error) {
+func NewConsumer(consumerName string, sourceName string, connectionAddr string, keys ...string) (*Consumer, error) {
 	ch, err := GetConnection(connectionAddr).Channel()
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string) 
 
 	err = ch.ExchangeDeclare(
 		sourceName,
-		"fanout", // type
+		"direct", // type
 		false,    // durable
 		false,    // auto-delete
 		false,    // internal
@@ -52,9 +52,14 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string) 
 		return nil, err
 	}
 
+	key := ""
+	if len(keys) > 0 {
+		key = keys[0]
+	}
+
 	err = ch.QueueBind(
 		q.Name,     // queue name
-		"",         // routing key — ignored for fanout
+		key,        // routing key
 		sourceName, // exchange name
 		false,
 		nil,

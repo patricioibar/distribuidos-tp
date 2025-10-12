@@ -7,9 +7,10 @@ import (
 type Producer struct {
 	name    string
 	channel *amqp.Channel
+	key     string
 }
 
-func NewProducer(name string, connectionAddr string) (*Producer, error) {
+func NewProducer(name string, connectionAddr string, keys ...string) (*Producer, error) {
 	ch, err := GetConnection(connectionAddr).Channel()
 
 	if err != nil {
@@ -18,7 +19,7 @@ func NewProducer(name string, connectionAddr string) (*Producer, error) {
 
 	err = ch.ExchangeDeclare(
 		name,
-		"fanout", // type
+		"direct", // type
 		false,    // durable
 		false,    // auto-deleted
 		false,    // internal
@@ -30,7 +31,12 @@ func NewProducer(name string, connectionAddr string) (*Producer, error) {
 		return nil, err
 	}
 
-	return &Producer{name: name, channel: ch}, nil
+	key := ""
+	if len(keys) > 0 {
+		key = keys[0]
+	}
+
+	return &Producer{name: name, channel: ch, key: key}, nil
 }
 
 func (p *Producer) StartConsuming(onMessageCallback OnMessageCallback) (error *MessageMiddlewareError) {
@@ -44,7 +50,7 @@ func (p *Producer) StopConsuming() (error *MessageMiddlewareError) {
 func (p *Producer) Send(message []byte) (error *MessageMiddlewareError) {
 	err := p.channel.Publish(
 		p.name,
-		"",
+		p.key,
 		false,
 		false,
 		amqp.Publishing{
