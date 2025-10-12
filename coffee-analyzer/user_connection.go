@@ -18,14 +18,20 @@ type CoffeeAnalyzer struct {
 	mwAddr        string
 	queriesConfig []responseparser.QueryOutput
 	parser        []responseparser.ResponseParser
+	jobPublisher  *middleware.Producer
+	totalWorkers  int
 }
 
 func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
+	jobPublisher, _ := middleware.NewProducer("jobs", config.MiddlewareAddress)
+
 	return &CoffeeAnalyzer{
 		Address:       config.ListeningAddress,
 		mwAddr:        config.MiddlewareAddress,
 		queriesConfig: config.Queries,
 		parser:        []responseparser.ResponseParser{},
+		jobPublisher:  jobPublisher,
+		totalWorkers:  config.TotalWorkers,
 	}
 }
 
@@ -76,12 +82,12 @@ func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket, id uuid.UUID
 	ca.handleTableUpload(firstBatch, s, id)
 }
 
-func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.Socket, id uuid.UUID) {
+func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.Socket, jobID uuid.UUID) {
 	defer s.Close()
 	var table string
 	json.Unmarshal(firstBatch, &table)
-	log.Infof("Receiving table %v for job %v", table, id)
-	producer, _ := middleware.NewProducer(table, ca.mwAddr)
+	log.Infof("Receiving table %v for job %v", table, jobID)
+	producer, _ := middleware.NewProducer(table, ca.mwAddr, jobID.String())
 
 	var header []string
 	headerJson, err := s.ReadBatch()
@@ -114,7 +120,44 @@ func (ca *CoffeeAnalyzer) handleNewJobRequest(s *communication.Socket) {
 	defer s.Close()
 	log.Infof("Received new job request")
 	uuid := uuid.New()
+
+	err := ca.notifyNewJobToWorkersAndWait(uuid)
+	if err != nil {
+		log.Errorf("Error notifying workers: %v", err)
+		return
+	}
+
+	// all workers ready, analyzer can start
 	s.SendUUID(uuid)
+}
+
+func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
+	consumer, err := middleware.NewConsumer("jobs", id.String(), ca.mwAddr)
+	if err != nil {
+		return err
+	}
+	defer consumer.Close()
+
+	ready := make(chan bool, 1)
+	readyCount := 0
+	callback := func(consumeChannel middleware.MiddlewareMessage, done chan *middleware.MessageMiddlewareError) {
+		readyCount++
+		if readyCount == ca.totalWorkers {
+			ready <- true
+		}
+		done <- nil
+	}
+	consumer.StartConsuming(callback)
+
+	bytes, _ := id.MarshalBinary()
+	er := ca.jobPublisher.Send(bytes)
+	if er != nil {
+		consumer.Close()
+		return er
+	}
+	<-ready
+	log.Infof("All workers ready for new job %v", id)
+	return nil
 }
 
 func (ca *CoffeeAnalyzer) handleGetResponsesRequest(s *communication.Socket, id uuid.UUID) {

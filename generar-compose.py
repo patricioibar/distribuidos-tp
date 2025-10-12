@@ -377,8 +377,8 @@ networks:
 '''
     return volumes_and_networks
 
-def add_coffeeAnalyzer_service() -> str:
-    coffee_analyzer_template = '''
+def add_coffeeAnalyzer_service(total_workers: int) -> str:
+    coffee_analyzer_template = f'''
   coffee-analyzer:
     image: coffee-analyzer:latest
     container_name: coffee-analyzer
@@ -387,6 +387,8 @@ def add_coffeeAnalyzer_service() -> str:
       dockerfile: ./coffee-analyzer/Dockerfile
     volumes:
       - ./coffee-analyzer/config.json:/app/config.json
+    environment:
+      TOTAL_WORKERS: {total_workers}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -430,11 +432,23 @@ def generate_compose_file(fileName: str):
     num_tpv_joiners = 3
     num_topuser_aggregators = 3
     num_topuser_birthdate_joiners = 5
+    
+    total_workers = (
+        num_filter_years +
+        num_filter_hours +
+        num_filter_amount +
+        num_filter_items +
+        num_items_aggregators +
+        num_tpv_aggregators +
+        num_tpv_joiners +
+        num_topuser_aggregators +
+        num_topuser_birthdate_joiners
+    )
 
     compose_content = f'''
 services:
 {add_rabbitmq_service()}
-{add_coffeeAnalyzer_service()}
+{add_coffeeAnalyzer_service(total_workers)}
 {add_analyst_service()}
 {add_filter_service(num_filter_years, FilterType.TbyYear, "transactions", "filtered-transactions-year")}
 {add_filter_service(num_filter_hours, FilterType.TbyHour, "filtered-transactions-year", "filtered-transactions-yearhour")}
