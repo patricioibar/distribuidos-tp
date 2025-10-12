@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	uuid "github.com/google/uuid"
 )
 
 const parentResultsDir = "results"
@@ -17,14 +19,28 @@ type ServerConnection struct {
 	CoffeeAnalyzerAddress string
 	doneReceivingResults  chan struct{}
 	resultWrittingDone    []chan struct{}
+	uuid                  uuid.UUID
 }
 
 func NewServerConnection(config *Config) *ServerConnection {
+	socket := c.Socket{}
+	err := socket.Connect(config.CoffeeAnalyzerAddress)
+	if err != nil {
+		log.Fatalf("Failed to connect: %v", err)
+	}
+	defer socket.Close()
+	socket.SendStartJobRequest()
+	uuid, err := socket.ReceiveUUID()
+	if err != nil {
+		log.Fatalf("Failed to receive UUID response: %v", err)
+	}
+
 	return &ServerConnection{
 		BatchSize:             config.BatchSize,
 		CoffeeAnalyzerAddress: config.CoffeeAnalyzerAddress,
 		doneReceivingResults:  make(chan struct{}),
 		resultWrittingDone:    []chan struct{}{},
+		uuid:                  uuid,
 	}
 }
 
@@ -35,14 +51,13 @@ func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 	err := socket.Connect(s.CoffeeAnalyzerAddress)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
-		return
 	}
 	defer socket.Close()
+	socket.SendUUID(s.uuid)
 
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Fatalf("Failed to read directory: %v", err)
-		return
 	}
 
 	for _, file := range files {
@@ -57,14 +72,12 @@ func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 		err := socket.SendBatch(tableBytes)
 		if err != nil && err != io.EOF {
 			log.Fatalf("Failed to send table %v", err)
-			return
 		}
 
 		columnsJson, _ := json.Marshal(table.Columns)
 		err = socket.SendBatch(columnsJson)
 		if err != nil && err != io.EOF {
 			log.Fatalf("Failed to send header %v", err)
-			return
 		}
 
 		header, _ := reader.getHeader()
@@ -83,6 +96,7 @@ func (s *ServerConnection) getResponses() {
 		return
 	}
 	defer socket.Close()
+	socket.SendUUID(s.uuid)
 
 	if _, err := os.Stat(parentResultsDir); os.IsNotExist(err) {
 		if err := os.Mkdir(parentResultsDir, 0755); err != nil {

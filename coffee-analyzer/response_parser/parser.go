@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/op/go-logging"
 
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
@@ -24,16 +25,18 @@ type QuerySink struct {
 }
 
 type ResponseParser struct {
+	userID     uuid.UUID
 	socket     *c.Socket
 	querySinks []QuerySink
 	queryDone  []chan struct{}
 }
 
-func NewResponseParser(queries []QueryOutput, mwAddr string) *ResponseParser {
+func NewResponseParser(id uuid.UUID, queries []QueryOutput, mwAddr string) *ResponseParser {
 	if len(queries) < 4 {
 		log.Fatalf("Expected at least 4 queries, got %d", len(queries))
 	}
 	rp := ResponseParser{
+		userID:    id,
 		queryDone: make([]chan struct{}, len(queries)),
 	}
 	var querySinks []QuerySink

@@ -9,7 +9,6 @@ import (
 )
 
 const getResponseMessage = "GET_RESPONSES"
-const startJobMessage = "START_JOB"
 
 func (s *Socket) BindAndListen(address string) error {
 	ln, err := net.Listen("tcp", address)
@@ -122,19 +121,16 @@ func IsResponseRequest(data []byte) bool {
 	return string(data) == getResponseMessage
 }
 
-func IsStartJobRequest(data []byte) bool {
-	return string(data) == startJobMessage
-}
-
 func (s *Socket) SendStartJobRequest() error {
 	if s.conn == nil {
 		return net.ErrClosed
 	}
-	request := []byte(startJobMessage)
-	return s.SendBatch(request)
+	id := uuid.Nil
+	data, _ := id.MarshalBinary()
+	return s.SendBatch(data)
 }
 
-func (s *Socket) SendUUIDResponse(uuid uuid.UUID) error {
+func (s *Socket) SendUUID(uuid uuid.UUID) error {
 	if s.conn == nil {
 		return net.ErrClosed
 	}
@@ -146,7 +142,7 @@ func (s *Socket) SendUUIDResponse(uuid uuid.UUID) error {
 	return err
 }
 
-func (s *Socket) ReceiveUUIDResponse() (uuid.UUID, error) {
+func (s *Socket) ReceiveUUID() (uuid.UUID, error) {
 	if s.conn == nil {
 		return uuid.UUID{}, net.ErrClosed
 	}

@@ -9,20 +9,23 @@ import (
 	"github.com/patricioibar/distribuidos-tp/innercommunication"
 
 	"github.com/patricioibar/distribuidos-tp/middleware"
+
+	uuid "github.com/google/uuid"
 )
 
 type CoffeeAnalyzer struct {
-	Address string
-	mwAddr  string
-	parser  *responseparser.ResponseParser
+	Address       string
+	mwAddr        string
+	queriesConfig []responseparser.QueryOutput
+	parser        []responseparser.ResponseParser
 }
 
 func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
-	parser := responseparser.NewResponseParser(config.Queries, config.MiddlewareAddress)
 	return &CoffeeAnalyzer{
-		Address: config.ListeningAddress,
-		mwAddr:  config.MiddlewareAddress,
-		parser:  parser,
+		Address:       config.ListeningAddress,
+		mwAddr:        config.MiddlewareAddress,
+		queriesConfig: config.Queries,
+		parser:        []responseparser.ResponseParser{},
 	}
 }
 
@@ -45,13 +48,20 @@ func (ca *CoffeeAnalyzer) Start() {
 			return
 		}
 
-		log.Infof("Accepted connection")
+		id, err := client_socket.ReceiveUUID()
+		if err != nil {
+			client_socket.Close()
+			continue
+		}
+		if id == uuid.Nil {
+			go ca.handleNewJobRequest(client_socket)
+		}
 
-		go ca.handleConnection(client_socket)
+		go ca.handleConnection(client_socket, id)
 	}
 }
 
-func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket) {
+func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket, id uuid.UUID) {
 	defer s.Close()
 
 	firstBatch, err := s.ReadBatch()
@@ -60,16 +70,17 @@ func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket) {
 	}
 	if communication.IsResponseRequest(firstBatch) {
 		log.Infof("Received responses request")
-		ca.handleGetResponsesRequest(s)
+		ca.handleGetResponsesRequest(s, id)
 	}
 
-	ca.handleTableUpload(firstBatch, s)
+	ca.handleTableUpload(firstBatch, s, id)
 }
 
-func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.Socket) {
+func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.Socket, id uuid.UUID) {
+	defer s.Close()
 	var table string
 	json.Unmarshal(firstBatch, &table)
-	log.Infof("Received table: %v", table)
+	log.Infof("Receiving table %v for job %v", table, id)
 	producer, _ := middleware.NewProducer(table, ca.mwAddr)
 
 	var header []string
@@ -99,6 +110,16 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	log.Infof("Finished receiving table: %v", table)
 }
 
-func (ca *CoffeeAnalyzer) handleGetResponsesRequest(s *communication.Socket) {
-	ca.parser.Start(s)
+func (ca *CoffeeAnalyzer) handleNewJobRequest(s *communication.Socket) {
+	defer s.Close()
+	log.Infof("Received new job request")
+	uuid := uuid.New()
+	s.SendUUID(uuid)
+}
+
+func (ca *CoffeeAnalyzer) handleGetResponsesRequest(s *communication.Socket, id uuid.UUID) {
+	defer s.Close()
+	parser := responseparser.NewResponseParser(id, ca.queriesConfig, ca.mwAddr)
+	ca.parser = append(ca.parser, *parser)
+	parser.Start(s)
 }
