@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/op/go-logging"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -32,27 +33,43 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
-	input, err := mw.NewConsumer(consumerName, sourceQueue, mwAddress)
-	if err != nil {
-		log.Fatalf("Failed to create input consumer: %v", err)
-	}
-	output, err = mw.NewProducer(outputExchange, mwAddress)
-	if err != nil {
-		log.Fatalf("Failed to create output producer: %v", err)
-	}
+	// Quiero leer de la cola de jobAnnouncements
+	// para eso tengo que bindear la cola para poder consumir de ella
+	// Una vez que lea de ella tengo que crear las nuevas colas para el job ese
+	// Y cuando ya tengo estas colas creadas, paso a avisarle al coffee analyzer que ya las cree
+	// Despues inicializo el worker en una go rutine
+	filterName := "FILTER-" + filterType + "-" + filterId
+	jobSource := "JOB_SOURCE"
 
-	workersCount, err := strconv.Atoi(workersCountStr)
-	if err != nil {
-		log.Fatalf("Invalid WORKERS_COUNT value: %v", err)
-	}
+	jobAnnouncements, err := mw.NewConsumer(filterName, jobSource, mwAddress)
 
-	filterWorker := filter.NewFilter(filterId, input, output, filterType, workersCount)
+	jobAnnouncements.StartConsuming(handleNewIncommingJob)
 
-	// Start the filter worker in a goroutine
-	go func() {
-		log.Infof("Starting filter worker (ID: %s, Type: %s)", filterId, filterType)
-		filterWorker.Start()
-	}()
+
+
+
+
+	// input, err = mw.NewConsumer(consumerName, sourceQueue, mwAddress)
+	// if err != nil {
+	// 	log.Fatalf("Failed to create input consumer: %v", err)
+	// }
+	// output, err = mw.NewProducer(outputExchange, mwAddress)
+	// if err != nil {
+	// 	log.Fatalf("Failed to create output producer: %v", err)
+	// }
+
+	// workersCount, err := strconv.Atoi(workersCountStr)
+	// if err != nil {
+	// 	log.Fatalf("Invalid WORKERS_COUNT value: %v", err)
+	// }
+
+	// filterWorker := filter.NewFilter(filterId, input, output, filterType, workersCount)
+
+	// // Start the filter worker in a goroutine
+	// go func() {
+	// 	log.Infof("Starting filter worker (ID: %s, Type: %s)", filterId, filterType)
+	// 	filterWorker.Start()
+	// }()
 
 	// Wait for termination signal
 	sig := <-sigChan
@@ -63,6 +80,78 @@ func main() {
 
 	log.Info("Filter service shutdown completed.")
 }
+
+
+func getHandleIncommingJob(ConsumerName: string, sourceQueue: string, mwAddress: string, filterId: string, input: string, output: string, filterType:string, workersCount: string, runningFilters: map[string]*filter.FilterWorker) (mw.OnMessageCallback) {
+
+	return func(consumeChannel MiddlewareMessage, done chan *MessageMiddlewareError) {
+		var id uuid.UUID
+		id, err := uuid.FromBytes(consumeChannel.Body)
+
+		// cola del que va a consumir el worker
+		inputQueue, err := mw.NewConsumer(ConsumerName, sourceQueue, mwAddress, id.String())
+		if err != nil {
+			log.Fatalf("Failed to create input consumer for job %s: %v", id.String(), err)
+		}
+
+		// Exchange al que avisar que ya se bindio la cola
+		ExchangeNotify, err := mw.NewProducer(id.String(), mwAddress)
+
+		ExchangeNotify.Send("PERON PERON") //?
+
+		// creo mi filter y me guardo la referencia
+
+		outputExchange, err = mw.NewProducer(outputExchange, mwAddress, id.String())
+		if err != nil {
+			log.Fatalf("Failed to create output producer: %v", err)
+		}
+
+		filterWorker := filter.NewFilter(filterId, inputQueue, outputExchange, filterType, workersCount)
+
+		runningFilters.add()
+
+		go func() {
+			log.Infof("Starting filter rutine (ID: %s, Type: %s, JobID: %s)", filterId, filterType, id.String())
+			filterWorker.Start()
+		}()
+
+	}
+
+}
+
+func handleNewIncommingJob(consumeChannel MiddlewareMessage, done chan *MessageMiddlewareError) {
+	var id uuid.UUID
+	id, err := uuid.FromBytes(consumeChannel.Body)
+
+	// cola del que va a consumir el worker
+	inputQueue, err := mw.NewConsumer(ConsumerName, sourceQueue, mwAddress, id.String())
+	if err != nil {
+		log.Fatalf("Failed to create input consumer for job %s: %v", id.String(), err)
+	}
+
+	// Exchange al que avisar que ya se bindio la cola
+	ExchangeNotify, err := mw.NewProducer(id.String(), mwAddress)
+
+	ExchangeNotify.Send("PERON PERON") //?
+
+	// creo mi filter y me guardo la referencia
+
+	output, err = mw.NewProducer(outputExchange, mwAddress)
+	if err != nil {
+		log.Fatalf("Failed to create output producer: %v", err)
+	}
+
+	filterWorker := filter.NewFilter(filterId, input, output, filterType, workersCount)
+
+
+	go func() {
+		log.Infof("Starting filter rutine (ID: %s, Type: %s, JobID: %s)", filterId, filterType, id.String())
+		filterWorker.Start()
+	}()
+
+}
+
+
 
 func shutdownGracefully(filterWorker *filter.FilterWorker, input, output mw.MessageMiddleware) {
 	log.Info("Starting graceful shutdown sequence...")
