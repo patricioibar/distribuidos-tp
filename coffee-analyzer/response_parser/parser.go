@@ -42,7 +42,7 @@ func NewResponseParser(id uuid.UUID, queries []QueryOutput, mwAddr string) *Resp
 	var querySinks []QuerySink
 	for i, query := range queries {
 		name := fmt.Sprintf("%s_queue", query.SinkName)
-		consumer, err := mw.NewConsumer(name, query.SinkName, mwAddr)
+		consumer, err := mw.NewConsumer(name, query.SinkName, mwAddr, id.String())
 		if err != nil {
 			log.Fatalf("Failed to create consumer for sink %s: %v", query.SinkName, err)
 		}
