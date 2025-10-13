@@ -7,10 +7,13 @@ import (
 
 	"aggregator/common"
 
+	"github.com/google/uuid"
 	"github.com/op/go-logging"
 
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
+
+const incomingJobsSource = "JOB_SOURCE"
 
 var log = logging.MustGetLogger("log")
 
@@ -48,29 +51,72 @@ func main() {
 
 	log.Debugf("Config: %+v", config)
 
-	var input mw.MessageMiddleware
-	var output mw.MessageMiddleware
+	jobsMap := make(map[string]*common.AggregatorWorker)
 
-	consumerName := config.InputName + config.QueryName
-	input, err = mw.NewConsumer(consumerName, config.InputName, config.MiddlewareAddress)
+	incomingJobs, err := mw.NewConsumer("", incomingJobsSource, config.MiddlewareAddress)
 	if err != nil {
-		log.Fatalf("Failed to create input consumer: %v", err)
+		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
-	output, err = mw.NewProducer(config.OutputName, config.MiddlewareAddress)
-	if err != nil {
-		log.Fatalf("Failed to create output producer: %v", err)
+	callback := initializeAggregatorJob(config, jobsMap)
+	if err := incomingJobs.StartConsuming(callback); err != nil {
+		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
-
-	aggregator := common.NewAggregatorWorker(config, input, output)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigChan
 		log.Infof("Received signal %s, shutting down aggregator...", sig)
-		aggregator.Close()
+		for _, job := range jobsMap {
+			job.Close()
+		}
 	}()
+}
 
-	log.Infof("Starting aggregator %s...", config.WorkerId)
-	aggregator.Start()
+func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.AggregatorWorker) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		jobId, err := uuid.FromBytes(msg.Body[0:16])
+		if err != nil {
+			done <- nil
+			log.Errorf("Failed to parse job ID: %v", err)
+			return
+		}
+		jobStr := jobId.String()
+		log.Infof("Received job %s", jobStr)
+
+		var input mw.MessageMiddleware
+		var output mw.MessageMiddleware
+
+		consumerName := config.InputName + config.QueryName
+		input, err = mw.NewConsumer(consumerName, config.InputName, config.MiddlewareAddress, jobStr)
+		if err != nil {
+			done <- nil
+			log.Errorf("Failed to create input consumer: %v", err)
+			return
+		}
+		output, err = mw.NewProducer(config.OutputName, config.MiddlewareAddress, jobStr)
+		if err != nil {
+			done <- nil
+			log.Errorf("Failed to create output producer: %v", err)
+			return
+		}
+
+		aggregator := common.NewAggregatorWorker(config, input, output)
+		jobsMap[jobStr] = aggregator
+
+		ready, err := mw.NewProducer(jobStr, config.MiddlewareAddress)
+		if err != nil {
+			done <- nil
+			log.Errorf("Failed to create ready producer for job %s: %v", jobStr, err)
+			return
+		}
+		ready.Send([]byte(config.WorkerId))
+		ready.Close()
+
+		log.Infof("Starting aggregator %s for job %s", config.WorkerId, jobStr)
+		aggregator.Start()
+
+		done <- nil
+	}
+
 }
