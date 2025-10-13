@@ -22,8 +22,10 @@ type CoffeeAnalyzer struct {
 	totalWorkers  int
 }
 
+const jobPublishingExchange = "JOB_SOURCE"
+
 func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
-	jobPublisher, _ := middleware.NewProducer("jobs", config.MiddlewareAddress)
+	jobPublisher, _ := middleware.NewProducer(jobPublishingExchange, config.MiddlewareAddress)
 
 	return &CoffeeAnalyzer{
 		Address:       config.ListeningAddress,
