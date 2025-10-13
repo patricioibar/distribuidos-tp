@@ -7,10 +7,13 @@ import (
 
 	"joiner/common"
 
+	"github.com/google/uuid"
 	"github.com/op/go-logging"
 
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
+
+const incomingJobsSource = "JOB_SOURCE"
 
 var log = logging.MustGetLogger("log")
 
@@ -48,39 +51,76 @@ func main() {
 
 	log.Debugf("Config: %+v", config)
 
-	var leftInput mw.MessageMiddleware
-	var rightInput mw.MessageMiddleware
-	var output mw.MessageMiddleware
+	jobsMap := make(map[string]*common.JoinerWorker)
 
-	// Share same queue for left input (round-robin among workers)
-	leftName := config.LeftInputName + "-" + config.QueryName
-	leftInput, err = mw.NewConsumer(leftName, config.LeftInputName, config.MiddlewareAddress)
+	incomingJobs, err := mw.NewConsumer("", incomingJobsSource, config.MiddlewareAddress)
 	if err != nil {
-		log.Fatalf("Failed to create input consumer: %v", err)
+		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
-
-	// All workers receive copies of the messages from the right input
-	uniqueName := config.RightInputName + "-" + config.WorkerId
-	rightInput, err = mw.NewConsumer(uniqueName, config.RightInputName, config.MiddlewareAddress)
-	if err != nil {
-		log.Fatalf("Failed to create input consumer: %v", err)
+	callback := initializeJoinerJob(config, jobsMap)
+	if err := incomingJobs.StartConsuming(callback); err != nil {
+		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
-
-	output, err = mw.NewProducer(config.OutputName, config.MiddlewareAddress)
-	if err != nil {
-		log.Fatalf("Failed to create output producer: %v", err)
-	}
-
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigChan
 		log.Infof("Received signal %s, shutting down joiner...", sig)
-		joiner.Close()
+		for _, job := range jobsMap {
+			job.Close()
+		}
 	}()
+}
 
-	log.Infof("Starting joiner %s...", config.WorkerId)
-	joiner.Start()
+func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.JoinerWorker) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		jobId, err := uuid.FromBytes(msg.Body[0:16])
+		if err != nil {
+			done <- nil
+			log.Errorf("Failed to parse job ID: %v", err)
+			return
+		}
+		jobStr := jobId.String()
+		log.Infof("Received job %s", jobStr)
+
+		var leftInput mw.MessageMiddleware
+		var rightInput mw.MessageMiddleware
+		var output mw.MessageMiddleware
+
+		// Share same queue for left input (round-robin among workers)
+		leftName := config.LeftInputName + "-" + config.QueryName
+		leftInput, err = mw.NewConsumer(leftName, config.LeftInputName, config.MiddlewareAddress, jobStr)
+		if err != nil {
+			log.Fatalf("Failed to create input consumer: %v", err)
+		}
+
+		// All workers receive copies of the messages from the right input
+		uniqueName := config.RightInputName + "-" + config.WorkerId
+		rightInput, err = mw.NewConsumer(uniqueName, config.RightInputName, config.MiddlewareAddress, jobStr)
+		if err != nil {
+			log.Fatalf("Failed to create input consumer: %v", err)
+		}
+
+		output, err = mw.NewProducer(config.OutputName, config.MiddlewareAddress, jobStr)
+		if err != nil {
+			log.Fatalf("Failed to create output producer: %v", err)
+		}
+
+		joiner := common.NewJoinerWorker(config, leftInput, rightInput, output)
+		jobsMap[jobStr] = joiner
+
+		ready, err := mw.NewProducer(jobStr, config.MiddlewareAddress)
+		if err != nil {
+			done <- nil
+			log.Errorf("Failed to create worker ready notifier for job %s: %v", jobStr, err)
+			return
+		}
+		ready.Send([]byte(config.WorkerId))
+		ready.Close()
+
+		log.Infof("Starting joiner %s...", config.WorkerId)
+		joiner.Start()
+		done <- nil
+	}
 }
