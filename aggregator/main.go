@@ -102,6 +102,9 @@ func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.A
 		aggregator := common.NewAggregatorWorker(config, input, output)
 		jobsMap[jobStr] = aggregator
 
+		log.Infof("Starting aggregator %s for job %s", config.WorkerId, jobStr)
+		go aggregator.Start()
+
 		ready, err := mw.NewProducer(jobStr, config.MiddlewareAddress)
 		if err != nil {
 			done <- nil
@@ -110,9 +113,6 @@ func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.A
 		}
 		ready.Send([]byte(config.WorkerId))
 		ready.Close()
-
-		log.Infof("Starting aggregator %s for job %s", config.WorkerId, jobStr)
-		aggregator.Start()
 
 		done <- nil
 	}

@@ -176,6 +176,7 @@ func writeResponsesToFile(resultsDir string, queryId int, responseChan chan c.Qu
 			continue
 		}
 		if batch.EOF {
+			log.Infof("All results for query %d received", queryId)
 			break
 		}
 		writeRows(batch.Rows, file, fileName)

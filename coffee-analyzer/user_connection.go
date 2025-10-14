@@ -62,7 +62,7 @@ func (ca *CoffeeAnalyzer) Start() {
 			continue
 		}
 		if id == uuid.Nil {
-			go ca.handleNewJobRequest(client_socket)
+			ca.handleNewJobRequest(client_socket)
 		}
 
 		go ca.handleConnection(client_socket, id)
@@ -73,7 +73,7 @@ func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket, id uuid.UUID
 	defer s.Close()
 
 	firstBatch, err := s.ReadBatch()
-	if err != nil {
+	if err != nil || len(firstBatch) == 0 {
 		return
 	}
 	if communication.IsResponseRequest(firstBatch) {
@@ -163,7 +163,6 @@ func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
 }
 
 func (ca *CoffeeAnalyzer) handleGetResponsesRequest(s *communication.Socket, id uuid.UUID) {
-	defer s.Close()
 	parser := responseparser.NewResponseParser(id, ca.queriesConfig, ca.mwAddr)
 	ca.parser = append(ca.parser, *parser)
 	parser.Start(s)

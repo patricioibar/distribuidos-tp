@@ -1,4 +1,6 @@
+
 services:
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -19,6 +21,7 @@ services:
     networks:
       - coffee_analysis_net
 
+
   coffee-analyzer:
     image: coffee-analyzer:latest
     container_name: coffee-analyzer
@@ -27,6 +30,8 @@ services:
       dockerfile: ./coffee-analyzer/Dockerfile
     volumes:
       - ./coffee-analyzer/config.json:/app/config.json
+    environment:
+      TOTAL_WORKERS: 28
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -37,10 +42,25 @@ services:
       retries: 5
     networks:
       - coffee_analysis_net
-
-  analyst:
+  analyst-1:
     image: analyst:latest
-    container_name: analyst
+    container_name: analyst-1
+    build:
+      context: .
+      dockerfile: ./analyst/Dockerfile
+    volumes:
+      - ./analyst/config.json:/app/config.json
+      - ./analyst/.data/:/app/.data/
+      - ./analyst/results/:/app/results/
+    depends_on:
+      coffee-analyzer:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+  
+  analyst-2:
+    image: analyst:latest
+    container_name: analyst-2
     build:
       context: .
       dockerfile: ./analyst/Dockerfile
@@ -54,21 +74,18 @@ services:
     networks:
       - coffee_analysis_net
 
-  # Transaction Filters
-
-  ## Filters by Year
-  filter-tbyear-1:
+  filter-TbyYear-1:
     image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyear-1
+    container_name: filter-TbyYear-1
     environment:
       LOG_LEVEL: "INFO"
-      FILTER_ID: "filter-tbyear-1"
+      FILTER_ID: "filter-TbyYear-1"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyYear"
-      CONSUMER_NAME: "transactions-year-consumer"
+      CONSUMER_NAME: "transactions-TbyYear-consumer"
       SOURCE_QUEUE: "transactions"
       OUTPUT_EXCHANGE: "filtered-transactions-year"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
@@ -78,18 +95,18 @@ services:
     networks:
       - coffee_analysis_net
 
-  filter-tbyear-2:
+  filter-TbyYear-2:
     image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyear-2
+    container_name: filter-TbyYear-2
     environment:
       LOG_LEVEL: "INFO"
-      FILTER_ID: "filter-tbyear-2"
+      FILTER_ID: "filter-TbyYear-2"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyYear"
-      CONSUMER_NAME: "transactions-year-consumer"
+      CONSUMER_NAME: "transactions-TbyYear-consumer"
       SOURCE_QUEUE: "transactions"
       OUTPUT_EXCHANGE: "filtered-transactions-year"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
@@ -99,18 +116,18 @@ services:
     networks:
       - coffee_analysis_net
 
-  filter-tbyear-3:
+  filter-TbyYear-3:
     image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyear-3
+    container_name: filter-TbyYear-3
     environment:
       LOG_LEVEL: "INFO"
-      FILTER_ID: "filter-tbyear-3"
+      FILTER_ID: "filter-TbyYear-3"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyYear"
-      CONSUMER_NAME: "transactions-year-consumer"
+      CONSUMER_NAME: "transactions-TbyYear-consumer"
       SOURCE_QUEUE: "transactions"
       OUTPUT_EXCHANGE: "filtered-transactions-year"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
@@ -119,18 +136,20 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
-    
-  ## Filters by Hour
-  filter-tbyhour-1:
+
+
+  filter-TbyHour-1:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyhour-1
+    container_name: filter-TbyHour-1
     environment:
-      FILTER_ID: "filter-tbyhour-1"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TbyHour-1"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyHour"
-      CONSUMER_NAME: "transactions-hour-consumer"
+      CONSUMER_NAME: "transactions-TbyHour-consumer"
       SOURCE_QUEUE: "filtered-transactions-year"
       OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
@@ -140,16 +159,18 @@ services:
     networks:
       - coffee_analysis_net
 
-  filter-tbyhour-2:
+  filter-TbyHour-2:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyhour-2
+    container_name: filter-TbyHour-2
     environment:
-      FILTER_ID: "filter-tbyhour-2"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TbyHour-2"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyHour"
-      CONSUMER_NAME: "transactions-hour-consumer"
+      CONSUMER_NAME: "transactions-TbyHour-consumer"
       SOURCE_QUEUE: "filtered-transactions-year"
       OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
@@ -159,16 +180,18 @@ services:
     networks:
       - coffee_analysis_net
 
-  filter-tbyhour-3:
+  filter-TbyHour-3:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyhour-3
+    container_name: filter-TbyHour-3
     environment:
-      FILTER_ID: "filter-tbyhour-3"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TbyHour-3"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyHour"
-      CONSUMER_NAME: "transactions-hour-consumer"
+      CONSUMER_NAME: "transactions-TbyHour-consumer"
       SOURCE_QUEUE: "filtered-transactions-year"
       OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
@@ -178,125 +201,114 @@ services:
     networks:
       - coffee_analysis_net
 
-  ## Filters by Amount
-  filter-tbyamount-1:
+
+  filter-TbyAmount-1:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyamount-1
+    container_name: filter-TbyAmount-1
     environment:
-      FILTER_ID: "filter-tbyamount-1"
-      WORKERS_COUNT: "3"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TbyAmount-1"
+      WORKERS_COUNT: "2"
       FILTER_TYPE: "TbyAmount"
-      CONSUMER_NAME: "transactions-amount-consumer"
-      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      CONSUMER_NAME: "transactions-TbyAmount-consumer"
       SOURCE_QUEUE: "filtered-transactions-yearhour"
       OUTPUT_EXCHANGE: "query1_sink"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - coffee_analysis_net
 
-  filter-tbyamount-2:
+  filter-TbyAmount-2:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-tbyamount-2
+    container_name: filter-TbyAmount-2
     environment:
-      FILTER_ID: "filter-tbyamount-2"
-      WORKERS_COUNT: "3"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TbyAmount-2"
+      WORKERS_COUNT: "2"
       FILTER_TYPE: "TbyAmount"
-      CONSUMER_NAME: "transactions-amount-consumer"
-      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      CONSUMER_NAME: "transactions-TbyAmount-consumer"
       SOURCE_QUEUE: "filtered-transactions-yearhour"
       OUTPUT_EXCHANGE: "query1_sink"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    networks:
-      - coffee_analysis_net
-
-  filter-tbyamount-3:
-    build:
-      context: .
-      dockerfile: filter/Dockerfile
-    container_name: filter-tbyamount-3
-    environment:
-      FILTER_ID: "filter-tbyamount-3"
-      WORKERS_COUNT: "3"
-      FILTER_TYPE: "TbyAmount"
-      CONSUMER_NAME: "transactions-amount-consumer"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
-      SOURCE_QUEUE: "filtered-transactions-yearhour"
-      OUTPUT_EXCHANGE: "query1_sink"
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - coffee_analysis_net
 
-  # Transaction Items Filter
-  filter-items-year-1:
+
+  filter-TIbyYear-1:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-items-year-1
+    container_name: filter-TIbyYear-1
     environment:
-      FILTER_ID: "filter-items-year-1"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TIbyYear-1"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TIbyYear"
-      CONSUMER_NAME: "filter-items-year"
-      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      CONSUMER_NAME: "transactions-TIbyYear-consumer"
       SOURCE_QUEUE: "transaction_items"
       OUTPUT_EXCHANGE: "filtered-years-items"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - coffee_analysis_net
 
-  filter-items-year-2:
+  filter-TIbyYear-2:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-items-year-2
+    container_name: filter-TIbyYear-2
     environment:
-      FILTER_ID: "filter-items-year-2"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TIbyYear-2"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TIbyYear"
-      CONSUMER_NAME: "filter-items-year"
-      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      CONSUMER_NAME: "transactions-TIbyYear-consumer"
       SOURCE_QUEUE: "transaction_items"
       OUTPUT_EXCHANGE: "filtered-years-items"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - coffee_analysis_net
 
-  filter-items-year-3:
+  filter-TIbyYear-3:
+    image: filter:latest
     build:
       context: .
       dockerfile: filter/Dockerfile
-    container_name: filter-items-year-3
+    container_name: filter-TIbyYear-3
     environment:
-      FILTER_ID: "filter-items-year-3"
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TIbyYear-3"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TIbyYear"
-      CONSUMER_NAME: "filter-items-year"
-      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      CONSUMER_NAME: "transactions-TIbyYear-consumer"
       SOURCE_QUEUE: "transaction_items"
       OUTPUT_EXCHANGE: "filtered-years-items"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
       - coffee_analysis_net
 
-  # Query 2 Workers
-  
-  ## Aggregators
+
   items-aggregator-1:
     image: aggregator:latest
     container_name: items-aggregator-1
@@ -320,7 +332,7 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
-  
+
   items-aggregator-2:
     image: aggregator:latest
     container_name: items-aggregator-2
@@ -369,7 +381,7 @@ services:
     networks:
       - coffee_analysis_net
 
-  ## Reducer
+
   items-reducer:
     image: aggregator:latest
     container_name: items-reducer
@@ -385,7 +397,7 @@ services:
       QUERY_NAME: "items"
       INPUT_NAME: "items-reducer_input"
       OUTPUT_NAME: "items-reducer_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 50
       IS_REDUCER: "true"
@@ -395,7 +407,7 @@ services:
     networks:
       - coffee_analysis_net
 
-  ## Joiners
+
   items-names-joiner:
     image: joiner:latest
     container_name: items-names-joiner
@@ -411,7 +423,7 @@ services:
       RIGHT_INPUT_NAME: "items-reducer_output"
       LEFT_INPUT_NAME: "menu_items"
       OUTPUT_NAME: "query2_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"subtotal_or_quantity\"]"
     depends_on:
@@ -419,10 +431,8 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
-  
-  # Query 3 Workers
-  
-  ## Aggregators
+
+
   tpv-aggregator-1:
     image: aggregator:latest
     container_name: tpv-aggregator-1
@@ -446,7 +456,7 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
-  
+
   tpv-aggregator-2:
     image: aggregator:latest
     container_name: tpv-aggregator-2
@@ -495,7 +505,7 @@ services:
     networks:
       - coffee_analysis_net
 
-  ## Reducer
+
   tpv-reducer:
     image: aggregator:latest
     container_name: tpv-reducer
@@ -520,16 +530,16 @@ services:
     networks:
       - coffee_analysis_net
 
-  ## Joiners
-  tpv-joiner1:
+
+  tpv-joiner-1:
     image: joiner:latest
-    container_name: tpv-joiner1
+    container_name: tpv-joiner-1
     build:
       context: .
       dockerfile: joiner/Dockerfile
     environment:
-      WORKER_ID: "tpv-joiner1"
-      WORKERS_COUNT: 1
+      WORKER_ID: "tpv-joiner-1"
+      WORKERS_COUNT: 3
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "store_id"
       QUERY_NAME: "tpv"
@@ -545,9 +555,55 @@ services:
     networks:
       - coffee_analysis_net
 
-  # Query 4 Workers
-  
-  ## Aggregators
+  tpv-joiner-2:
+    image: joiner:latest
+    container_name: tpv-joiner-2
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "tpv-joiner-2"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "store_id"
+      QUERY_NAME: "tpv"
+      RIGHT_INPUT_NAME: "stores"
+      LEFT_INPUT_NAME: "tpv-reducer_output"
+      OUTPUT_NAME: "query3_sink"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+  tpv-joiner-3:
+    image: joiner:latest
+    container_name: tpv-joiner-3
+    build:
+      context: .
+      dockerfile: joiner/Dockerfile
+    environment:
+      WORKER_ID: "tpv-joiner-3"
+      WORKERS_COUNT: 3
+      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      JOIN_KEY: "store_id"
+      QUERY_NAME: "tpv"
+      RIGHT_INPUT_NAME: "stores"
+      LEFT_INPUT_NAME: "tpv-reducer_output"
+      OUTPUT_NAME: "query3_sink"
+      LOG_LEVEL: "INFO"
+      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
+
   topuser-aggregator-1:
     image: aggregator:latest
     container_name: topuser-aggregator-1
@@ -561,7 +617,7 @@ services:
       GROUP_BY: "[\"store_id\",\"user_id\"]"
       AGGREGATIONS: "[{\"col\":\"transaction_id\",\"func\":\"count\"}]"
       QUERY_NAME: "topuser"
-      INPUT_NAME: "filtered-transactions-yearhour"
+      INPUT_NAME: "filtered-transactions-year"
       OUTPUT_NAME: "topuser-reducer_input"
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
@@ -571,7 +627,7 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
-  
+
   topuser-aggregator-2:
     image: aggregator:latest
     container_name: topuser-aggregator-2
@@ -585,7 +641,7 @@ services:
       GROUP_BY: "[\"store_id\",\"user_id\"]"
       AGGREGATIONS: "[{\"col\":\"transaction_id\",\"func\":\"count\"}]"
       QUERY_NAME: "topuser"
-      INPUT_NAME: "filtered-transactions-yearhour"
+      INPUT_NAME: "filtered-transactions-year"
       OUTPUT_NAME: "topuser-reducer_input"
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
@@ -609,9 +665,9 @@ services:
       GROUP_BY: "[\"store_id\",\"user_id\"]"
       AGGREGATIONS: "[{\"col\":\"transaction_id\",\"func\":\"count\"}]"
       QUERY_NAME: "topuser"
-      INPUT_NAME: "filtered-transactions-yearhour"
+      INPUT_NAME: "filtered-transactions-year"
       OUTPUT_NAME: "topuser-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
     depends_on:
@@ -620,7 +676,7 @@ services:
     networks:
       - coffee_analysis_net
 
-  ## Reducer
+
   topuser-reducer:
     image: aggregator:latest
     container_name: topuser-reducer
@@ -646,15 +702,15 @@ services:
     networks:
       - coffee_analysis_net
 
-  ## Joiners
-  topuser-birthdate-joiner1:
+
+  topuser-birthdate-joiner-1:
     image: joiner:latest
-    container_name: topuser-birthdate-joiner1
+    container_name: topuser-birthdate-joiner-1
     build:
       context: .
       dockerfile: joiner/Dockerfile
     environment:
-      WORKER_ID: "topuser-birthdate-joiner1"
+      WORKER_ID: "topuser-birthdate-joiner-1"
       WORKERS_COUNT: 5
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
@@ -671,14 +727,14 @@ services:
     networks:
       - coffee_analysis_net
 
-  topuser-birthdate-joiner2:
+  topuser-birthdate-joiner-2:
     image: joiner:latest
-    container_name: topuser-birthdate-joiner2
+    container_name: topuser-birthdate-joiner-2
     build:
       context: .
       dockerfile: joiner/Dockerfile
     environment:
-      WORKER_ID: "topuser-birthdate-joiner2"
+      WORKER_ID: "topuser-birthdate-joiner-2"
       WORKERS_COUNT: 5
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
@@ -695,14 +751,14 @@ services:
     networks:
       - coffee_analysis_net
 
-  topuser-birthdate-joiner3:
+  topuser-birthdate-joiner-3:
     image: joiner:latest
-    container_name: topuser-birthdate-joiner3
+    container_name: topuser-birthdate-joiner-3
     build:
       context: .
       dockerfile: joiner/Dockerfile
     environment:
-      WORKER_ID: "topuser-birthdate-joiner3"
+      WORKER_ID: "topuser-birthdate-joiner-3"
       WORKERS_COUNT: 5
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
@@ -719,14 +775,14 @@ services:
     networks:
       - coffee_analysis_net
 
-  topuser-birthdate-joiner4:
+  topuser-birthdate-joiner-4:
     image: joiner:latest
-    container_name: topuser-birthdate-joiner4
+    container_name: topuser-birthdate-joiner-4
     build:
       context: .
       dockerfile: joiner/Dockerfile
     environment:
-      WORKER_ID: "topuser-birthdate-joiner4"
+      WORKER_ID: "topuser-birthdate-joiner-4"
       WORKERS_COUNT: 5
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
@@ -743,15 +799,14 @@ services:
     networks:
       - coffee_analysis_net
 
-  
-  topuser-birthdate-joiner5:
+  topuser-birthdate-joiner-5:
     image: joiner:latest
-    container_name: topuser-birthdate-joiner5
+    container_name: topuser-birthdate-joiner-5
     build:
       context: .
       dockerfile: joiner/Dockerfile
     environment:
-      WORKER_ID: "topuser-birthdate-joiner5"
+      WORKER_ID: "topuser-birthdate-joiner-5"
       WORKERS_COUNT: 5
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
@@ -767,6 +822,7 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
+
 
   topuser-storename-joiner:
     image: joiner:latest
@@ -792,6 +848,7 @@ services:
     networks:
       - coffee_analysis_net
 
+
 volumes:
   rabbitmq_data:
   rabbitmq_logs:
@@ -801,4 +858,5 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 192.168.0.0/24
+        - subnet: 172.28.0.0/16
+

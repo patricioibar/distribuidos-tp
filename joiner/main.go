@@ -108,6 +108,9 @@ func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.Joine
 		joiner := common.NewJoinerWorker(config, leftInput, rightInput, output)
 		jobsMap[jobStr] = joiner
 
+		log.Infof("Starting joiner %s...", config.WorkerId)
+		go joiner.Start()
+
 		ready, err := mw.NewProducer(jobStr, config.MiddlewareAddress)
 		if err != nil {
 			done <- nil
@@ -117,8 +120,6 @@ func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.Joine
 		ready.Send([]byte(config.WorkerId))
 		ready.Close()
 
-		log.Infof("Starting joiner %s...", config.WorkerId)
-		joiner.Start()
 		done <- nil
 	}
 }

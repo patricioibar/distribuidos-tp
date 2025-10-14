@@ -25,7 +25,7 @@ type QuerySink struct {
 }
 
 type ResponseParser struct {
-	userID     uuid.UUID
+	jobID      uuid.UUID
 	socket     *c.Socket
 	querySinks []QuerySink
 	queryDone  []chan struct{}
@@ -36,7 +36,7 @@ func NewResponseParser(id uuid.UUID, queries []QueryOutput, mwAddr string) *Resp
 		log.Fatalf("Expected at least 4 queries, got %d", len(queries))
 	}
 	rp := ResponseParser{
-		userID:    id,
+		jobID:     id,
 		queryDone: make([]chan struct{}, len(queries)),
 	}
 	var querySinks []QuerySink
@@ -83,7 +83,7 @@ func (rp *ResponseParser) Start(s *c.Socket) {
 	for _, done := range rp.queryDone {
 		<-done
 	}
-	log.Infof("All queries done, shutting down response parser")
+	log.Infof("[%s] All queries done, closing response parser", rp.jobID)
 	s.Close()
 	for _, sink := range rp.querySinks {
 		sink.consumer.Close()
@@ -107,7 +107,7 @@ func genericRowsToStringRows(rows [][]interface{}) [][]string {
 }
 
 func (rp *ResponseParser) queryResultReceived(queryId int, queryIndex int) {
-	log.Infof("Query %d result received, sending EOF batch", queryId)
+	log.Infof("[%s] Query %d result received, sending EOF batch", rp.jobID, queryId)
 	eofBatch := c.QueryResponseBatch{
 		QueryId: queryId,
 		EOF:     true,
