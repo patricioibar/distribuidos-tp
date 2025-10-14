@@ -3,6 +3,7 @@ package filter
 import (
 	"encoding/json"
 	"errors"
+	"sync"
 
 	"github.com/op/go-logging"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -21,6 +22,7 @@ type FilterWorker struct {
 	filterFunction mw.OnMessageCallback
 	batchChan      chan ic.RowsBatch
 	closeChan      chan struct{}
+	StopOnce       sync.Once
 }
 
 func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string, workersCount int) *FilterWorker {
@@ -129,24 +131,26 @@ func (f *FilterWorker) Close() {
 	log.Info("FilterWorker shutdown initiated...")
 
 	// Stop consuming new messages from input
-	if f.input != nil {
-		if err := f.input.Close(); err != nil {
-			log.Errorf("Failed to stop input consuming: %v", err)
-		} else {
-			log.Debug("Input consumer stopped.")
+	f.StopOnce.Do(func() {
+		if f.input != nil {
+			if err := f.input.Close(); err != nil {
+				log.Errorf("Failed to stop input consuming: %v", err)
+			} else {
+				log.Debug("Input consumer stopped.")
+			}
 		}
-	}
 
-	// Stop the output producer
-	if f.output != nil {
-		if err := f.output.Close(); err != nil {
-			log.Errorf("Failed to stop output producer: %v", err)
-		} else {
-			log.Debug("Output producer stopped.")
+		// Stop the output producer
+		if f.output != nil {
+			if err := f.output.Close(); err != nil {
+				log.Errorf("Failed to stop output producer: %v", err)
+			} else {
+				log.Debug("Output producer stopped.")
+			}
 		}
-	}
 
-	log.Info("FilterWorker shutdown completed.")
+		log.Info("FilterWorker shutdown completed.")
+	})
 }
 
 func (f *FilterWorker) handleEndSignal(batch *ic.RowsBatch) {
