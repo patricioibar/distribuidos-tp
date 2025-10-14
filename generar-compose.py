@@ -373,7 +373,7 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 172.18.0.0/16
+        - subnet: 172.28.0.0/16
 '''
     return volumes_and_networks
 
@@ -471,4 +471,4 @@ services:
         f.write(compose_content)
 
 if __name__ == "__main__":
-    generate_compose_file("docker-compose_test.yml")
+    generate_compose_file("docker-compose.yml")

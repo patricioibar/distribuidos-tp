@@ -64,13 +64,11 @@ func main() {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigChan
-		log.Infof("Received signal %s, shutting down aggregator...", sig)
-		for _, job := range jobsMap {
-			job.Close()
-		}
-	}()
+	sig := <-sigChan
+	log.Infof("Received signal %s, shutting down aggregator...", sig)
+	for _, job := range jobsMap {
+		job.Close()
+	}
 }
 
 func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.AggregatorWorker) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
