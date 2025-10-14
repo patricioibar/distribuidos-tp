@@ -53,7 +53,7 @@ func main() {
 
 	jobsMap := make(map[string]*common.JoinerWorker)
 
-	incomingJobs, err := mw.NewConsumer("", incomingJobsSource, config.MiddlewareAddress)
+	incomingJobs, err := mw.NewConsumer(incomingJobsSource+"_"+config.WorkerId, incomingJobsSource, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}

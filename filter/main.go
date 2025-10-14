@@ -36,19 +36,18 @@ func main() {
 	// Una vez que lea de ella tengo que crear las nuevas colas para el job ese
 	// Y cuando ya tengo estas colas creadas, paso a avisarle al coffee analyzer que ya las cree
 	// Despues inicializo el worker en una go rutine
-	filterName := "FILTER-" + config.FilterType + "-" + config.FilterId
+	filterName := "filter-" + config.FilterType + "-" + config.FilterId
 	jobSource := "JOB_SOURCE"
 
-	jobAnnouncements, err := mw.NewConsumer(filterName, jobSource, config.MwAddress)
+	jobAnnouncements, err := mw.NewConsumer(jobSource+"_"+filterName, jobSource, config.MwAddress)
 	if err != nil {
 		log.Fatalf("Failed to create job announcements consumer: %v", err)
 	}
-	
+
 	runningFilters := make(map[string]*filter.FilterWorker)
 	handleNewIncommingJob := getHandleIncommingJob(config, runningFilters)
 
 	jobAnnouncements.StartConsuming(handleNewIncommingJob)
-
 
 	// Wait for termination signal
 	sig := <-sigChan
@@ -60,8 +59,7 @@ func main() {
 	log.Info("Filter service shutdown completed.")
 }
 
-
-func getHandleIncommingJob(config Config, runningFilters map[string]*filter.FilterWorker) (mw.OnMessageCallback) {
+func getHandleIncommingJob(config Config, runningFilters map[string]*filter.FilterWorker) mw.OnMessageCallback {
 
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		var id uuid.UUID
@@ -77,7 +75,7 @@ func getHandleIncommingJob(config Config, runningFilters map[string]*filter.Filt
 		if err != nil {
 			log.Errorf("Failed to create input consumer for job %s: %v", id.String(), err)
 			done <- nil
-			return 
+			return
 		}
 
 		// Exchange al que avisar que ya se bindio la cola
@@ -112,8 +110,6 @@ func getHandleIncommingJob(config Config, runningFilters map[string]*filter.Filt
 	}
 
 }
-
-
 
 func shutdownGracefully(runningFilters map[string]*filter.FilterWorker, input mw.MessageMiddleware) {
 	log.Info("Starting graceful shutdown sequence...")
@@ -150,7 +146,7 @@ func shutdownGracefully(runningFilters map[string]*filter.FilterWorker, input mw
 	}
 }
 
-func getConfig() (Config) {
+func getConfig() Config {
 	// get enviroment variables for filterType, consumerName, mwAddress, sourceQueue, outputExchange
 	filterId := os.Getenv("FILTER_ID")
 	workersCountStr := os.Getenv("WORKERS_COUNT")
@@ -200,7 +196,6 @@ func InitLogger(logLevel string) error {
 	logging.SetBackend(backendLeveled)
 	return nil
 }
-
 
 type Config struct {
 	FilterId       string
