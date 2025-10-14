@@ -148,11 +148,9 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatch) {
 			continue
 		}
 
-		if aw.Config.DropNa {
-			if hasNil(groupByIndexes, row) || hasNil(aggIndexesToSlice(aggIndexes, aw.Config.Aggregations), row) {
-				log.Debugf("skipping row with nil: %v", row)
-				continue
-			}
+		if hasNil(groupByIndexes, row) || hasNil(aggIndexesToSlice(aggIndexes, aw.Config.Aggregations), row) {
+			log.Debugf("skipping row with nil: %v", row)
+			continue
 		}
 
 		key := getGroupByKey(groupByIndexes, row)
@@ -180,20 +178,19 @@ func aggIndexesToSlice(aggIndexes map[string]int, aggs []a.AggConfig) []int {
 }
 
 func hasNil(groupByIndexes []int, row []interface{}) bool {
-	hasNil := false
 	for _, idx := range groupByIndexes {
 		value := row[idx]
 		if value == nil {
-			hasNil = true
-			break
+			return true
 		}
-		strValue, ok := value.(string)
-		if ok && (strings.TrimSpace(strValue) == "" || strValue == "NULL") {
-			hasNil = true
-			break
+		if strValue, ok := value.(string); ok {
+			strValue = strings.TrimSpace(strings.ToUpper(strValue))
+			if strValue == "" || strValue == "NULL" {
+				return true
+			}
 		}
 	}
-	return hasNil
+	return false
 }
 
 func (aw *AggregatorWorker) sendDataBatch(data dr.RetainedData) {
