@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	uuid "github.com/google/uuid"
 )
@@ -104,7 +103,7 @@ func (s *ServerConnection) getResponses() {
 			return
 		}
 	}
-	resultsDir := filepath.Join(parentResultsDir, time.Now().Format("2006-01-02 15:04:05"))
+	resultsDir := filepath.Join(parentResultsDir, s.uuid.String())
 	if err := os.Mkdir(resultsDir, 0755); err != nil && !os.IsExist(err) {
 		log.Errorf("Failed to create results directory: %v", err)
 		return
