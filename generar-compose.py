@@ -88,7 +88,7 @@ def add_itemsReducer_service() -> str:
       QUERY_NAME: "items"
       INPUT_NAME: "items-reducer_input"
       OUTPUT_NAME: "items-reducer_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 50
       IS_REDUCER: "true"
@@ -117,9 +117,9 @@ def add_itemNames_joiner() -> str:
       RIGHT_INPUT_NAME: "items-reducer_output"
       LEFT_INPUT_NAME: "menu_items"
       OUTPUT_NAME: "query2_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
-      OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"subtotal_or_quantity\"]"
+      OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -266,7 +266,7 @@ def add_topUserReducer_service() -> str:
       QUERY_NAME: "topuser"
       INPUT_NAME: "topuser-reducer_input"
       OUTPUT_NAME: "topuser-reducer_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"count_transaction_id\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 3
       IS_REDUCER: "true"
@@ -298,7 +298,7 @@ def add_topUserBirthdate_joiner(nodes: int) -> str:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
@@ -327,7 +327,7 @@ def add_topUserStoreName_joiner() -> str:
       RIGHT_INPUT_NAME: "topuser-birthdate-joiner_output"
       LEFT_INPUT_NAME: "stores"
       OUTPUT_NAME: "query4_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
@@ -402,11 +402,13 @@ def add_coffeeAnalyzer_service(total_workers: int) -> str:
 '''
     return coffee_analyzer_template
 
-def add_analyst_service() -> str:
-    analyst_template = '''
-  analyst:
+def add_analyst_service(nodes: int) -> str:
+    result = ""
+    for i in range(1, nodes + 1):
+        analyst_template = f'''
+  analyst-{i}:
     image: analyst:latest
-    container_name: analyst
+    container_name: analyst-{i}
     build:
       context: .
       dockerfile: ./analyst/Dockerfile
@@ -420,7 +422,8 @@ def add_analyst_service() -> str:
     networks:
       - coffee_analysis_net
 '''
-    return analyst_template
+        result += analyst_template
+    return result
 
 def generate_compose_file(fileName: str):
     num_filter_years = 3
@@ -432,6 +435,8 @@ def generate_compose_file(fileName: str):
     num_tpv_joiners = 3
     num_topuser_aggregators = 3
     num_topuser_birthdate_joiners = 5
+
+    num_analysts = 3
     
     total_workers = (
         num_filter_years +
@@ -449,7 +454,7 @@ def generate_compose_file(fileName: str):
 services:
 {add_rabbitmq_service()}
 {add_coffeeAnalyzer_service(total_workers)}
-{add_analyst_service()}
+{add_analyst_service(num_analysts)}
 {add_filter_service(num_filter_years, FilterType.TbyYear, "transactions", "filtered-transactions-year")}
 {add_filter_service(num_filter_hours, FilterType.TbyHour, "filtered-transactions-year", "filtered-transactions-yearhour")}
 {add_filter_service(num_filter_amount, FilterType.TbyAmount, "filtered-transactions-yearhour", "query1_sink")}

@@ -42,6 +42,8 @@ services:
       retries: 5
     networks:
       - coffee_analysis_net
+
+
   analyst-1:
     image: analyst:latest
     container_name: analyst-1
@@ -57,7 +59,7 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
-  
+
   analyst-2:
     image: analyst:latest
     container_name: analyst-2
@@ -73,6 +75,23 @@ services:
         condition: service_healthy
     networks:
       - coffee_analysis_net
+
+  analyst-3:
+    image: analyst:latest
+    container_name: analyst-3
+    build:
+      context: .
+      dockerfile: ./analyst/Dockerfile
+    volumes:
+      - ./analyst/config.json:/app/config.json
+      - ./analyst/.data/:/app/.data/
+      - ./analyst/results/:/app/results/
+    depends_on:
+      coffee-analyzer:
+        condition: service_healthy
+    networks:
+      - coffee_analysis_net
+
 
   filter-TbyYear-1:
     image: filter:latest
@@ -425,7 +444,7 @@ services:
       OUTPUT_NAME: "query2_sink"
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
-      OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"subtotal_or_quantity\"]"
+      OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -692,7 +711,7 @@ services:
       QUERY_NAME: "topuser"
       INPUT_NAME: "topuser-reducer_input"
       OUTPUT_NAME: "topuser-reducer_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"count_transaction_id\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 3
       IS_REDUCER: "true"
@@ -718,7 +737,7 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
@@ -742,7 +761,7 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
@@ -766,7 +785,7 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
@@ -790,7 +809,7 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
@@ -814,7 +833,7 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
@@ -839,7 +858,7 @@ services:
       RIGHT_INPUT_NAME: "topuser-birthdate-joiner_output"
       LEFT_INPUT_NAME: "stores"
       OUTPUT_NAME: "query4_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
     depends_on:
