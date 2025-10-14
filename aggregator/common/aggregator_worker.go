@@ -3,6 +3,7 @@ package common
 import (
 	a "aggregator/common/aggFunctions"
 	dr "aggregator/common/dataRetainer"
+	"encoding/json"
 	"strings"
 	"sync"
 
@@ -100,15 +101,43 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 }
 
 func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData) {
+	log.Debugf("Worker %s sending retained data, different formats: %d", aw.Config.WorkerId, len(differentFormats))
+	uniqueKeyColumns := make(map[string]struct{})
+	uniqueAggregations := make(map[string]struct{})
+	for _, dataInfo := range differentFormats {
+		for _, col := range dataInfo.KeyColumns {
+			uniqueKeyColumns[col] = struct{}{}
+		}
+		for _, agg := range dataInfo.Aggregations {
+			str, _ := json.Marshal(agg)
+			uniqueAggregations[string(str)] = struct{}{}
+		}
+	}
+	var outputKeyColumns []string
+	var outputAggregations []a.AggConfig
+	for col := range uniqueKeyColumns {
+		outputKeyColumns = append(outputKeyColumns, col)
+	}
+	for aggStr := range uniqueAggregations {
+		var agg a.AggConfig
+		if err := json.Unmarshal([]byte(aggStr), &agg); err != nil {
+			log.Errorf("Failed to unmarshal aggregation: %v", err)
+			continue
+		}
+		outputAggregations = append(outputAggregations, agg)
+	}
+
 	for _, dataInfo := range differentFormats {
 		log.Debugf(
-			"Worker %s sending reduced data, total groups: %d",
-			aw.Config.WorkerId, len(dataInfo.Data),
+			"key_columns: %v, aggregations: %v, total groups: %d",
+			dataInfo.KeyColumns, dataInfo.Aggregations, len(dataInfo.Data),
 		)
 
+		aggsColnames := aggsAsColNames(dataInfo.Aggregations)
+
 		dataBatch := dr.RetainedData{
-			KeyColumns:   dataInfo.KeyColumns,
-			Aggregations: dataInfo.Aggregations,
+			KeyColumns:   outputKeyColumns,
+			Aggregations: outputAggregations,
 			Data:         make([][]interface{}, 0),
 		}
 
@@ -123,7 +152,27 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 				i = 0
 			}
 
-			dataBatch.Data = append(dataBatch.Data, row)
+			formatedRow := make([]interface{}, len(outputKeyColumns)+len(outputAggregations))
+
+			for j, col := range outputKeyColumns {
+				colIndex := getIndex(col, dataInfo.KeyColumns)
+				if colIndex != -1 {
+					formatedRow[j] = row[colIndex]
+				} else {
+					formatedRow[j] = nil
+				}
+			}
+
+			for j, agg := range outputAggregations {
+				aggIndex := getIndex(agg.Col, aggsColnames)
+				if aggIndex != -1 {
+					formatedRow[len(outputKeyColumns)+j] = row[len(dataInfo.KeyColumns)+aggIndex]
+				} else {
+					formatedRow[len(outputKeyColumns)+j] = nil
+				}
+			}
+
+			dataBatch.Data = append(dataBatch.Data, formatedRow)
 			i++
 		}
 

@@ -27,6 +27,14 @@ func getGroupByColIndexes(config *Config, batch *ic.RowsBatch) []int {
 	return getIndexes(config.GroupBy, batch.ColumnNames)
 }
 
+func aggsAsColNames(aggs []a.AggConfig) []string {
+	var colNames []string
+	for _, agg := range aggs {
+		colNames = append(colNames, agg.Col)
+	}
+	return colNames
+}
+
 func getIndexes(colNames []string, allColNames []string) []int {
 	var indexes []int
 	for _, colName := range colNames {
