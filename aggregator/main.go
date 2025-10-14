@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"aggregator/common"
@@ -52,26 +53,42 @@ func main() {
 	log.Debugf("Config: %+v", config)
 
 	jobsMap := make(map[string]*common.AggregatorWorker)
+	jobsMapLock := sync.Mutex{}
 
 	incomingJobs, err := mw.NewConsumer(incomingJobsSource+"_"+config.WorkerId, incomingJobsSource, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
-	callback := initializeAggregatorJob(config, jobsMap)
+	removeFromMap := make(chan string, 10)
+	callback := initializeAggregatorJob(config, jobsMap, &jobsMapLock, removeFromMap)
 	if err := incomingJobs.StartConsuming(callback); err != nil {
 		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
+
+	go removeDoneJobs(jobsMap, &jobsMapLock, removeFromMap)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigChan
 	log.Infof("Received signal %s, shutting down aggregator...", sig)
+	incomingJobs.Close()
+	jobsMapLock.Lock()
 	for _, job := range jobsMap {
 		job.Close()
 	}
+	jobsMapLock.Unlock()
+	close(removeFromMap)
 }
 
-func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.AggregatorWorker) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+func removeDoneJobs(jobsMap map[string]*common.AggregatorWorker, mutex *sync.Mutex, removeFromMap chan string) {
+	for jobID := range removeFromMap {
+		mutex.Lock()
+		delete(jobsMap, jobID)
+		mutex.Unlock()
+	}
+}
+
+func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.AggregatorWorker, jobsMapLock *sync.Mutex, removeFromMap chan string) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		jobId, err := uuid.FromBytes(msg.Body[0:16])
 		if err != nil {
@@ -99,8 +116,10 @@ func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.A
 			return
 		}
 
-		aggregator := common.NewAggregatorWorker(config, input, output)
+		aggregator := common.NewAggregatorWorker(config, input, output, jobStr, removeFromMap)
+		jobsMapLock.Lock()
 		jobsMap[jobStr] = aggregator
+		jobsMapLock.Unlock()
 
 		log.Infof("Starting aggregator %s for job %s", config.WorkerId, jobStr)
 		go aggregator.Start()

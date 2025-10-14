@@ -4,6 +4,7 @@ import (
 	a "aggregator/common/aggFunctions"
 	dr "aggregator/common/dataRetainer"
 	"strings"
+	"sync"
 
 	"github.com/op/go-logging"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -13,24 +14,30 @@ import (
 var log = logging.MustGetLogger("log")
 
 type AggregatorWorker struct {
-	Config       *Config
-	input        mw.MessageMiddleware
-	output       mw.MessageMiddleware
-	callback     mw.OnMessageCallback
-	reducedData  map[string][]a.Aggregation
-	dataRetainer dr.DataRetainer
-	closeChan    chan struct{}
+	Config        *Config
+	input         mw.MessageMiddleware
+	output        mw.MessageMiddleware
+	callback      mw.OnMessageCallback
+	reducedData   map[string][]a.Aggregation
+	dataRetainer  dr.DataRetainer
+	closeChan     chan struct{}
+	removeFromMap chan string
+	jobID         string
+	closeOnce     sync.Once
 }
 
-func NewAggregatorWorker(config *Config, input mw.MessageMiddleware, output mw.MessageMiddleware) *AggregatorWorker {
+func NewAggregatorWorker(config *Config, input mw.MessageMiddleware, output mw.MessageMiddleware, jobID string, removeFromMap chan string) *AggregatorWorker {
 	reducedData := make(map[string][]a.Aggregation)
 	aggregator := AggregatorWorker{
-		Config:       config,
-		input:        input,
-		output:       output,
-		reducedData:  reducedData,
-		dataRetainer: dr.NewDataRetainer(config.Retainings),
-		closeChan:    make(chan struct{}),
+		Config:        config,
+		input:         input,
+		output:        output,
+		reducedData:   reducedData,
+		dataRetainer:  dr.NewDataRetainer(config.Retainings),
+		closeChan:     make(chan struct{}),
+		removeFromMap: removeFromMap,
+		jobID:         jobID,
+		closeOnce:     sync.Once{},
 	}
 
 	aggregator.callback = aggregator.messageCallback()
@@ -49,14 +56,17 @@ func (aw *AggregatorWorker) Start() {
 }
 
 func (aw *AggregatorWorker) Close() {
-	log.Info("Closing worker...")
-	if err := aw.input.Close(); err != nil {
-		log.Errorf("Failed to close input: %v", err)
-	}
-	if err := aw.output.Close(); err != nil {
-		log.Errorf("Failed to close output: %v", err)
-	}
-	log.Info("Successfully closed worker")
+	aw.closeOnce.Do(func() {
+		log.Info("Closing worker...")
+		if err := aw.input.Close(); err != nil {
+			log.Errorf("Failed to close input: %v", err)
+		}
+		if err := aw.output.Close(); err != nil {
+			log.Errorf("Failed to close output: %v", err)
+		}
+		aw.removeFromMap <- aw.jobID
+		log.Info("Successfully closed worker")
+	})
 }
 
 func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {

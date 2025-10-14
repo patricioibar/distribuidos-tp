@@ -198,7 +198,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 func newWorker(config *common.Config) (*StubConsumer, *StubProducer) {
 	input := newStubConsumer()
 	output := newStubProducer()
-	worker := common.NewAggregatorWorker(config, input, output)
+	worker := common.NewAggregatorWorker(config, input, output, "", make(chan string, 1))
 	go worker.Start()
 	input.waitForStart()
 	return input, output
@@ -217,7 +217,7 @@ func newWorkers(config *common.Config, workersCount int) (*StubConsumer, *StubPr
 			WorkerId:     fmt.Sprintf("worker-%d", i+1),
 			LogLevel:     "DEBUG",
 		}
-		worker := common.NewAggregatorWorker(&configCopy, input, output)
+		worker := common.NewAggregatorWorker(&configCopy, input, output, "", make(chan string, 1))
 		go worker.Start()
 		input.waitForStart()
 	}
