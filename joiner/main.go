@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"joiner/common"
@@ -52,26 +53,41 @@ func main() {
 	log.Debugf("Config: %+v", config)
 
 	jobsMap := make(map[string]*common.JoinerWorker)
-
+	jobsMapLock := sync.Mutex{}
+	removeFromMap := make(chan string, 10)
 	incomingJobs, err := mw.NewConsumer(incomingJobsSource+"_"+config.WorkerId, incomingJobsSource, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
-	callback := initializeJoinerJob(config, jobsMap)
+	callback := initializeJoinerJob(config, jobsMap, &jobsMapLock, removeFromMap)
 	if err := incomingJobs.StartConsuming(callback); err != nil {
 		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
+
+	go removeDoneJobs(jobsMap, &jobsMapLock, removeFromMap)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigChan
 	log.Infof("Received signal %s, shutting down joiner...", sig)
+	incomingJobs.Close()
+	jobsMapLock.Lock()
 	for _, job := range jobsMap {
 		job.Close()
 	}
+	jobsMapLock.Unlock()
+	close(removeFromMap)
 }
 
-func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.JoinerWorker) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+func removeDoneJobs(jobsMap map[string]*common.JoinerWorker, mutex *sync.Mutex, removeFromMap chan string) {
+	for jobID := range removeFromMap {
+		mutex.Lock()
+		delete(jobsMap, jobID)
+		mutex.Unlock()
+	}
+}
+
+func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.JoinerWorker, jobsMapLock *sync.Mutex, removeFromMap chan string) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		jobId, err := uuid.FromBytes(msg.Body[0:16])
 		if err != nil {
@@ -105,8 +121,11 @@ func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.Joine
 			log.Fatalf("Failed to create output producer: %v", err)
 		}
 
-		joiner := common.NewJoinerWorker(config, leftInput, rightInput, output)
+		joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, jobStr, removeFromMap)
+
+		jobsMapLock.Lock()
 		jobsMap[jobStr] = joiner
+		jobsMapLock.Unlock()
 
 		log.Infof("Starting joiner %s...", config.WorkerId)
 		go joiner.Start()

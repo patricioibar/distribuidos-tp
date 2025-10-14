@@ -1,19 +1,24 @@
 package common
 
 import (
+	"sync"
+
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
 type JoinerWorker struct {
-	Config     *Config
-	leftInput  mw.MessageMiddleware
-	rightInput mw.MessageMiddleware
-	output     mw.MessageMiddleware
-	rightCache *TableCache
-	joinedRows [][]interface{}
-	rightDone  chan struct{}
-	closeChan  chan struct{}
+	Config        *Config
+	leftInput     mw.MessageMiddleware
+	rightInput    mw.MessageMiddleware
+	output        mw.MessageMiddleware
+	rightCache    *TableCache
+	joinedRows    [][]interface{}
+	rightDone     chan struct{}
+	closeChan     chan struct{}
+	jobID         string
+	removeFromMap chan string
+	closeOnce     sync.Once
 }
 
 func NewJoinerWorker(
@@ -21,16 +26,20 @@ func NewJoinerWorker(
 	leftInput mw.MessageMiddleware,
 	rightInput mw.MessageMiddleware,
 	output mw.MessageMiddleware,
+	jobID string,
+	removeFromMap chan string,
 ) *JoinerWorker {
 	return &JoinerWorker{
-		Config:     config,
-		leftInput:  leftInput,
-		rightInput: rightInput,
-		output:     output,
-		closeChan:  make(chan struct{}),
-		rightDone:  make(chan struct{}),
-		rightCache: nil,
-		joinedRows: make([][]interface{}, 0),
+		Config:        config,
+		leftInput:     leftInput,
+		rightInput:    rightInput,
+		output:        output,
+		closeChan:     make(chan struct{}),
+		rightDone:     make(chan struct{}),
+		rightCache:    nil,
+		joinedRows:    make([][]interface{}, 0),
+		jobID:         jobID,
+		removeFromMap: removeFromMap,
 	}
 }
 
@@ -44,10 +53,13 @@ func (jw *JoinerWorker) Start() {
 }
 
 func (jw *JoinerWorker) Close() {
-	jw.leftInput.Close()
-	jw.rightInput.Close()
-	jw.output.Close()
-	log.Debugf("Worker %s closed", jw.Config.WorkerId)
+	jw.closeOnce.Do(func() {
+		jw.leftInput.Close()
+		jw.rightInput.Close()
+		jw.output.Close()
+		jw.removeFromMap <- jw.jobID
+		log.Debugf("Worker %s closed", jw.Config.WorkerId)
+	})
 }
 
 func (jw *JoinerWorker) innerStart() {

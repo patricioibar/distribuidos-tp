@@ -134,7 +134,7 @@ func TestJoinMultipleRows(t *testing.T) {
 	rightInput := newStubConsumer()
 	output := newStubProducer()
 
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output)
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
 
 	go func() { joiner.Start() }()
 
@@ -216,7 +216,7 @@ func TestJoinNoMatches(t *testing.T) {
 	rightInput := newStubConsumer()
 	output := newStubProducer()
 
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output)
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
 
 	go func() { joiner.Start() }()
 
@@ -293,7 +293,7 @@ func TestJoinMultipleBatches(t *testing.T) {
 	rightInput := newStubConsumer()
 	output := newStubProducer()
 
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output)
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
 
 	go func() { joiner.Start() }()
 
@@ -407,8 +407,8 @@ func TestMultipleJoiners(t *testing.T) {
 	right2Input := newStubConsumer()
 	output := newStubProducer()
 
-	joiner1 := common.NewJoinerWorker(config1, leftInput, right1Input, output)
-	joiner2 := common.NewJoinerWorker(config2, leftInput, right2Input, output)
+	joiner1 := common.NewJoinerWorker(config1, leftInput, right1Input, output, "", nil)
+	joiner2 := common.NewJoinerWorker(config2, leftInput, right2Input, output, "", nil)
 
 	go func() { joiner1.Start() }()
 	go func() { joiner2.Start() }()
