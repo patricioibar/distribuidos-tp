@@ -25,13 +25,18 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string, 
 		return nil, err
 	}
 
+	key := ""
+	if len(keys) > 0 {
+		key = keys[0]
+	}
+
 	q, err := ch.QueueDeclare(
-		consumerName, // name
-		false,        // durable
-		true,         // delete when unused
-		false,        // exclusive
-		false,        // no-wait
-		nil,          // arguments
+		consumerName+key, // name
+		false,            // durable
+		true,             // delete when unused
+		false,            // exclusive
+		false,            // no-wait
+		nil,              // arguments
 	)
 	if err != nil {
 		_ = ch.Close()
@@ -50,11 +55,6 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string, 
 	if err != nil {
 		_ = ch.Close()
 		return nil, err
-	}
-
-	key := ""
-	if len(keys) > 0 {
-		key = keys[0]
 	}
 
 	err = ch.QueueBind(
