@@ -28,7 +28,7 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string, 
 	q, err := ch.QueueDeclare(
 		consumerName, // name
 		false,        // durable
-		false,        // delete when unused
+		true,         // delete when unused
 		false,        // exclusive
 		false,        // no-wait
 		nil,          // arguments

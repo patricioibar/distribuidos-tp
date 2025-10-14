@@ -1,6 +1,8 @@
 package middleware_test
 
 import (
+	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -203,4 +205,61 @@ func TestTwoProducersOneConsumer(t *testing.T) {
 
 	assert.Contains(t, receivedMsgs, testMessage1)
 	assert.Contains(t, receivedMsgs, testMessage2)
+}
+
+func TestQueueAutoDeleteWhenUnused(t *testing.T) {
+	producerName := "producerAutoDeleteTest"
+	consumerName := "consumerAutoDeleteTest"
+
+	producer, err := middleware.NewProducer(producerName, "amqp://guest:guest@localhost:5672/")
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	consumer, err := middleware.NewConsumer(consumerName, producerName, "amqp://guest:guest@localhost:5672/")
+	assert.NoError(t, err)
+
+	callback := func(msg middleware.MiddlewareMessage, done chan *middleware.MessageMiddlewareError) {
+		done <- nil
+	}
+	errConsume := consumer.StartConsuming(callback)
+	assert.Nil(t, errConsume)
+
+	//time.Sleep(10000 * time.Millisecond) // wait a bit to ensure queue is registered in RabbitMQ
+
+	errStop := consumer.StopConsuming()
+	assert.Nil(t, errStop)
+	errClose := consumer.Close()
+	assert.Nil(t, errClose)
+
+	//Close producer in case it's keeping the queue alive
+	errProducerClose := producer.Close()
+	assert.Nil(t, errProducerClose)
+
+	queueExists, err := checkQueueExists(consumerName)
+	assert.NoError(t, err)
+	assert.False(t, queueExists, "Expected queue to be auto-deleted, but it still exists")
+}
+
+func checkQueueExists(queueName string) (bool, error) {
+	url := fmt.Sprintf("http://localhost:15672/api/queues/%%2f/%s", queueName)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+	req.SetBasicAuth("guest", "guest")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case 200:
+		return true, nil
+	case 404:
+		return false, nil
+	}
+	return false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 }
