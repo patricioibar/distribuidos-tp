@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import csv
 import os
@@ -67,25 +66,7 @@ def compare_files(pathA, pathB):
             "diff_preview": diff_preview(sA, sB, max_lines=10),
         }
 
-def main():
-    parser = argparse.ArgumentParser(description="Comparar .csv comunes entre dos carpetas")
-    parser.add_argument("folderA", help="Carpeta A")
-    parser.add_argument("folderB", help="Carpeta B")
-    args = parser.parse_args()
-
-    a, b = args.folderA, args.folderB
-    if not os.path.isdir(a) or not os.path.isdir(b):
-        print("ERROR: Ambos parámetros deben ser carpetas válidas.", file=sys.stderr)
-        sys.exit(2)
-
-    filesA = {f for f in os.listdir(a) if f.endswith(".csv")}
-    filesB = {f for f in os.listdir(b) if f.endswith(".csv")}
-    common = sorted(filesA & filesB)
-
-    if not common:
-        print("No hay archivos .csv en común entre las dos carpetas.")
-        sys.exit(0)
-
+def compare_results(a, b):
     overall_equal = True
     print(f"Comparando carpetas:\n  A: {a}\n  B: {b}\n")
     for fname in common:
@@ -111,4 +92,22 @@ def main():
         print("RESULTADO: Se encontraron diferencias.")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Comparar .csv comunes entre dos carpetas")
+    parser.add_argument("folderA", help="Carpeta A")
+    parser.add_argument("folderB", help="Carpeta B")
+    args = parser.parse_args()
+
+    a, b = args.folderA, args.folderB
+    if not os.path.isdir(a) or not os.path.isdir(b):
+        print("ERROR: Ambos parámetros deben ser carpetas válidas.", file=sys.stderr)
+        sys.exit(2)
+
+    filesA = {f for f in os.listdir(a) if f.endswith(".csv")}
+    filesB = {f for f in os.listdir(b) if f.endswith(".csv")}
+    common = sorted(filesA & filesB)
+
+    if not common:
+        print("No hay archivos .csv en común entre las dos carpetas.")
+        sys.exit(0)
+    
+    compare_results(a, b)

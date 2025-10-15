@@ -1,0 +1,7 @@
+# Python dependencies required to run tests in tests/
+pytest>=7.0.0
+docker>=6.0.0
+PyYAML>=6.0
+
+# Optional helpers you may want during development
+pytest-xdist>=3.0.0  # parallel test runner (optional)

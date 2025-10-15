@@ -1,6 +1,5 @@
-
-
 import enum
+import sys
 
 
 MIDDLEWARE_ADDRESS = "amqp://guest:guest@rabbitmq:5672/"
@@ -425,19 +424,19 @@ def add_analyst_service(nodes: int) -> str:
         result += analyst_template
     return result
 
-def generate_compose_file(fileName: str):
-    num_filter_years = 3
-    num_filter_hours = 3
-    num_filter_amount = 2
-    num_filter_items = 3
-    num_items_aggregators = 3
-    num_tpv_aggregators = 3
-    num_tpv_joiners = 3
-    num_topuser_aggregators = 3
-    num_topuser_birthdate_joiners = 5
+def generate_compose_file(fileName: str, nodes_count: dict):
+    num_filter_years = nodes_count.get("filter-years", 1)
+    num_filter_hours = nodes_count.get("filter-hours", 1)
+    num_filter_amount = nodes_count.get("filter-amount", 1)
+    num_filter_items = nodes_count.get("filter-items", 1)
+    num_items_aggregators = nodes_count.get("items-aggregator", 1)
+    num_tpv_aggregators = nodes_count.get("tpv-aggregator", 1)
+    num_tpv_joiners = nodes_count.get("tpv-joiner", 1)
+    num_topuser_aggregators = nodes_count.get("topuser-aggregator", 1)
+    num_topuser_birthdate_joiners = nodes_count.get("topuser-birthdate-joiner", 1)
 
-    num_analysts = 3
-    
+    num_analysts = nodes_count.get("analyst", 1)
+
     total_workers = (
         num_filter_years +
         num_filter_hours +
@@ -475,5 +474,22 @@ services:
     with open(fileName, "w") as f:
         f.write(compose_content)
 
+nodes_count = {
+    "filter-years": 3,
+    "filter-hours": 3,
+    "filter-amount": 2,
+    "filter-items": 3,
+    "items-aggregator": 3,
+    "tpv-aggregator": 3,
+    "tpv-joiner": 3,
+    "topuser-aggregator": 3,
+    "topuser-birthdate-joiner": 5,
+    "analyst": 3
+}
+
 if __name__ == "__main__":
-    generate_compose_file("docker-compose.yml")
+  file_name = "docker-compose.yml"
+  if len(sys.argv) > 1:
+    file_name = sys.argv[1]
+  
+  generate_compose_file(file_name, nodes_count)
