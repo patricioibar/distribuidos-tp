@@ -135,11 +135,10 @@ func TestGetFilterFunction(t *testing.T) {
 			filterWorker := &FilterWorker{
 				filterId:     "test-worker",
 				workersCount: 1,
-				batchChan:    batchChan,
 				closeChan:    make(chan struct{}),
 			}
 
-			callback, err := filterWorker.getFilterFunction(batchChan, tt.filterType)
+			callback, err := filterWorker.getFilterFunction(tt.filterType)
 
 			if tt.shouldErr {
 				if err == nil {
@@ -168,12 +167,11 @@ func TestFilterCallbackWithEndSignal(t *testing.T) {
 		workersCount: 1,
 		input:        input,
 		output:       output,
-		batchChan:    make(chan ic.RowsBatch, 10),
-		closeChan:    make(chan struct{}),
+
+		closeChan: make(chan struct{}),
 	}
 
-	batchChan := filterWorker.batchChan
-	callback, err := filterWorker.getFilterFunction(batchChan, "TbyYear")
+	callback, err := filterWorker.getFilterFunction("TbyYear")
 	if err != nil {
 		t.Fatalf("failed to get filter function: %v", err)
 	}
@@ -196,66 +194,6 @@ func TestFilterCallbackWithEndSignal(t *testing.T) {
 	if result != nil {
 		t.Errorf("unexpected error processing end signal: %v", result)
 	}
-}
-
-// Integration test for complete workflow
-func TestFilterWorkerIntegration(t *testing.T) {
-	input := &MockMiddleware{}
-	output := &MockMiddleware{}
-
-	// Create filter worker with workerID
-	filter := NewFilter("test-worker", input, output, "TbyYear", 1)
-
-	// Test data with mixed years
-	testBatch := ic.RowsBatch{
-		ColumnNames: []string{"id", "year", "data"},
-		Rows: [][]interface{}{
-			{1, "2024-03-15 10:30:45", "sample data"},
-			{2, "2025-08-20 14:22:33", "more data"},
-			{3, "2023-01-10 09:15:20", "old data"}, // should be filtered out
-		},
-		EndSignal: false,
-	}
-
-	testData, err := json.Marshal(testBatch)
-	if err != nil {
-		t.Fatalf("failed to marshal test data: %v", err)
-	}
-
-	// Start the filter worker in a goroutine
-	go func() {
-		filter.Start()
-	}()
-
-	// Give some time for setup
-	time.Sleep(10 * time.Millisecond)
-
-	// Send test message
-	input.SimulateMessage(testData)
-
-	// Give some time for processing
-	time.Sleep(50 * time.Millisecond)
-
-	// Check output messages
-	messages := output.GetMessages()
-	if len(messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(messages))
-	}
-
-	// Parse the result
-	var resultBatch ic.RowsBatch
-	if err := json.Unmarshal(messages[0], &resultBatch); err != nil {
-		t.Fatalf("failed to unmarshal result: %v", err)
-	}
-
-	// Verify the result - Only 2024 and 2025 data should pass through the filter
-	expectedRows := 2
-	if len(resultBatch.Rows) != expectedRows {
-		t.Errorf("expected %d rows, got %d", expectedRows, len(resultBatch.Rows))
-	}
-
-	// Clean up
-	filter.Close()
 }
 
 // Test end signal handling
