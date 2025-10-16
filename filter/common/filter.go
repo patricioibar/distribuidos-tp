@@ -84,8 +84,7 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 		}
 
 		if batch.IsEndSignal() {
-			f.handleEndSignal(&batch)
-			close(f.closeChan)
+			f.handleEndSignal(&batch, batchChan)
 		}
 
 		done <- nil
@@ -114,6 +113,9 @@ func (f *FilterWorker) Start() {
 				log.Errorf("Failed to send message: %v", err)
 			} else {
 				log.Debugf("Filter %s successfully sent batch to output exchange", f.filterId)
+			}
+			if batch.IsEndSignal() {
+				close(f.closeChan)
 			}
 		}
 	}
@@ -145,7 +147,7 @@ func (f *FilterWorker) Close() {
 	})
 }
 
-func (f *FilterWorker) handleEndSignal(batch *ic.RowsBatch) {
+func (f *FilterWorker) handleEndSignal(batch *ic.RowsBatch, batchChan chan ic.RowsBatch) {
 
 	log.Debugf("Worker received end signal. Task ended.")
 
@@ -153,8 +155,8 @@ func (f *FilterWorker) handleEndSignal(batch *ic.RowsBatch) {
 
 	if len(batch.WorkersDone) == f.workersCount {
 		log.Info("All workers done. Sending end signal to next stage.")
-		endSignal, _ := ic.NewEndSignal().Marshal()
-		f.output.Send(endSignal)
+		endSignal := ic.NewEndSignal()
+		batchChan <- *endSignal
 		return
 	}
 
