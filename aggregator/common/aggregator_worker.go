@@ -85,6 +85,8 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 			aw.aggregateBatch(batch)
 		}
 
+		done <- nil
+
 		if batch.IsEndSignal() {
 			retainedData := aw.dataRetainer.RetainData(
 				aw.Config.GroupBy,
@@ -95,8 +97,6 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 			aw.PropagateEndSignal(batch)
 			close(aw.closeChan)
 		}
-
-		done <- nil
 	}
 }
 

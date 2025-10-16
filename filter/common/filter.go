@@ -10,8 +10,6 @@ import (
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
-const maxBatchBufferSize = 100
-
 var log = logging.MustGetLogger("log")
 
 type FilterWorker struct {
@@ -89,11 +87,11 @@ func (f *FilterWorker) getFilterFunction(filterType string) (mw.OnMessageCallbac
 			}
 		}
 
+		done <- nil
+
 		if batch.IsEndSignal() {
 			f.handleEndSignal(&batch)
 		}
-
-		done <- nil
 	}, nil
 }
 
