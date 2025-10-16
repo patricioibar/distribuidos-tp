@@ -118,13 +118,13 @@ func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 			jw.joinBatch(batch)
 		}
 
-		done <- nil
-
 		if batch.IsEndSignal() {
 			jw.sendJoinedResults()
 			jw.propagateLeftEndSignal(batch)
 			close(jw.closeChan)
 		}
+
+		done <- nil
 	}
 }
 

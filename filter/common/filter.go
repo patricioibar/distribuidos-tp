@@ -61,7 +61,7 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 	default:
 		return nil, errors.New("unknown filter type")
 	}
-	i := 0
+
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		jsonData := string(consumeChannel.Body)
 		var batch ic.RowsBatch
@@ -73,14 +73,7 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 
 		if len(batch.Rows) != 0 {
 			filteredBatch, err := filterFunction(batch)
-			if err != nil {
-				i++
-				if i == 1000 {
-					log.Errorf("Failed to filter rows: %v", err)
-					log.Debugf("Offending batch: %+v", batch)
-					i = 0
-				}
-			} else {
+			if err == nil {
 				log.Debugf("Filter %s processed batch: %d input rows -> %d output rows", f.filterId, len(batch.Rows), len(filteredBatch.Rows))
 				if len(filteredBatch.Rows) > 0 {
 					batchChan <- filteredBatch
@@ -90,13 +83,12 @@ func (f *FilterWorker) getFilterFunction(batchChan chan ic.RowsBatch, filterType
 			}
 		}
 
-		done <- nil
-
 		if batch.IsEndSignal() {
 			f.handleEndSignal(&batch)
 			close(f.closeChan)
 		}
 
+		done <- nil
 	}, nil
 }
 
