@@ -128,8 +128,6 @@ func TestGetFilterFunction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			batchChan := make(chan ic.RowsBatch, 10)
-			defer close(batchChan)
 
 			// Create a filter worker to test the method
 			filterWorker := &FilterWorker{
@@ -162,14 +160,7 @@ func TestFilterCallbackWithEndSignal(t *testing.T) {
 	output := &MockMiddleware{}
 
 	// Create filter worker
-	filterWorker := &FilterWorker{
-		filterId:     "test-worker",
-		workersCount: 1,
-		input:        input,
-		output:       output,
-
-		closeChan: make(chan struct{}),
-	}
+	filterWorker := NewFilter("test-worker", input, output, "TbyYear", 1)
 
 	callback, err := filterWorker.getFilterFunction("TbyYear")
 	if err != nil {
@@ -177,7 +168,7 @@ func TestFilterCallbackWithEndSignal(t *testing.T) {
 	}
 
 	// Test with end signal
-	endSignal := ic.NewEndSignal()
+	endSignal := ic.NewEndSignal(nil, 0)
 	jsonData, err := json.Marshal(endSignal)
 	if err != nil {
 		t.Fatalf("failed to marshal end signal: %v", err)
@@ -214,7 +205,7 @@ func TestEndSignalHandling(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Send end signal
-	endSignal := ic.NewEndSignal()
+	endSignal := ic.NewEndSignal(nil, 0)
 	endData, err := json.Marshal(endSignal)
 	if err != nil {
 		t.Fatalf("failed to marshal end signal: %v", err)
