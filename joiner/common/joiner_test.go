@@ -1,9 +1,11 @@
 package common_test
 
 import (
+	"fmt"
 	"joiner/common"
 	"testing"
 
+	roaring "github.com/RoaringBitmap/roaring/roaring64"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -90,7 +92,7 @@ func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
 func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
-var endSignal, _ = ic.NewEndSignal().Marshal()
+var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
 func TestJoinMultipleRows(t *testing.T) {
 	leftColumns := []string{"id", "name"}
@@ -124,8 +126,128 @@ func TestJoinMultipleRows(t *testing.T) {
 		{5, "Eve", "Finance"},
 	}
 
-	leftBatch := ic.NewRowsBatch(leftColumns, leftRows)
-	rightBatch := ic.NewRowsBatch(rightColumns, rightRows)
+	leftBatch := ic.NewRowsBatch(leftColumns, leftRows, 0)
+	rightBatch := ic.NewRowsBatch(rightColumns, rightRows, 0)
+
+	leftBatchBytes, _ := leftBatch.Marshal()
+	rightBatchBytes, _ := rightBatch.Marshal()
+
+	leftInput := newStubConsumer()
+	rightInput := newStubConsumer()
+	output := newStubProducer()
+
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
+
+	go func() { joiner.Start() }()
+
+	rightInput.waitForStart()
+	rightInput.SimulateMessage(rightBatchBytes)
+	rightInput.SimulateMessage(endSignal)
+
+	leftInput.waitForStart()
+	leftInput.SimulateMessage(leftBatchBytes)
+	leftInput.SimulateMessage(endSignal)
+
+	output.waitForAMessage()
+	output.waitForAMessage()
+	output.waitForAMessage()
+
+	if len(output.sentMessages) != 3 {
+		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
+	}
+
+	joinedBatch, err := rowsBatchFromString(string(output.sentMessages[0]))
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %s", err)
+	}
+
+	if len(joinedBatch.Rows) != len(expectedJoinedRows) {
+		t.Fatalf("Expected %d joined rows, got %d", len(expectedJoinedRows), len(joinedBatch.Rows))
+	}
+
+	for i, row := range joinedBatch.Rows {
+		id := int(row[0].(float64))
+		name := row[1].(string)
+		department := row[2].(string)
+
+		expectedRow := expectedJoinedRows[i]
+		expectedId := expectedRow[0].(int)
+		expectedName := expectedRow[1].(string)
+		expectedDepartment := expectedRow[2].(string)
+
+		if id != expectedId || name != expectedName || department != expectedDepartment {
+			t.Errorf("Row %d mismatch: expected %v, got %v", i, expectedRow, row)
+		}
+	}
+
+	middleMessage, err := sequenceSetFromString(string(output.sentMessages[1]))
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %s", err)
+	}
+	if middleMessage.Sequences.GetCardinality() != 1 {
+		t.Fatalf("Expected cardinality 1 in sequence set, got %d", middleMessage.Sequences.GetCardinality())
+	}
+
+	var lastMsg ic.Message
+	err = lastMsg.Unmarshal(output.sentMessages[2])
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %s", err)
+	}
+	if !isEndSignal(&lastMsg) {
+		t.Fatalf("Expected end signal in last message")
+	}
+}
+
+func isEndSignal(msg *ic.Message) bool {
+	return msg.Type == ic.MsgEndSignal
+}
+
+func sequenceSetFromString(s string) (*ic.SequenceSetPayload, error) {
+	var msg ic.Message
+	if err := msg.Unmarshal([]byte(s)); err != nil {
+		return nil, err
+	}
+	payload, ok := msg.Payload.(*ic.SequenceSetPayload)
+	if !ok {
+		return nil, fmt.Errorf("expected SequenceSetPayload, got %T", msg.Payload)
+	}
+	return payload, nil
+}
+
+func rowsBatchFromString(s string) (*ic.RowsBatchPayload, error) {
+	var msg ic.Message
+	if err := msg.Unmarshal([]byte(s)); err != nil {
+		return nil, err
+	}
+	payload, ok := msg.Payload.(*ic.RowsBatchPayload)
+	if !ok {
+		return nil, fmt.Errorf("expected RowsBatchPayload, got %T", msg.Payload)
+	}
+	return payload, nil
+}
+
+func TestJoinNoMatches(t *testing.T) {
+	leftColumns := []string{"id", "name"}
+	leftRows := [][]interface{}{
+		{1, "Alice"},
+		{2, "Bob"},
+	}
+	rightColumns := []string{"id", "department"}
+	rightRows := [][]interface{}{
+		{3, "HR"},
+		{4, "Engineering"},
+	}
+
+	config := &common.Config{
+		WorkerId:      "worker-1",
+		WorkersCount:  1,
+		JoinKey:       "id",
+		OutputColumns: []string{"id", "name", "department"},
+		BatchSize:     10,
+	}
+
+	leftBatch := ic.NewRowsBatch(leftColumns, leftRows, 0)
+	rightBatch := ic.NewRowsBatch(rightColumns, rightRows, 0)
 
 	leftBatchBytes, _ := leftBatch.Marshal()
 	rightBatchBytes, _ := rightBatch.Marshal()
@@ -150,100 +272,23 @@ func TestJoinMultipleRows(t *testing.T) {
 	output.waitForAMessage()
 
 	if len(output.sentMessages) != 2 {
-		t.Fatalf("Expected 2 messages sent, got %d", len(output.sentMessages))
+		t.Fatalf("Expected 2 message sent, got %d", len(output.sentMessages))
 	}
 
-	joinedBatch, err := ic.RowsBatchFromString(string(output.sentMessages[0]))
+	msg, err := sequenceSetFromString(string(output.sentMessages[0]))
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %s", err)
 	}
-
-	if len(joinedBatch.Rows) != len(expectedJoinedRows) {
-		t.Fatalf("Expected %d joined rows, got %d", len(expectedJoinedRows), len(joinedBatch.Rows))
+	if msg.Sequences.GetCardinality() != 1 {
+		t.Fatalf("Expected cardinality 1 in sequence set, got %d", msg.Sequences.GetCardinality())
 	}
 
-	for i, row := range joinedBatch.Rows {
-		id := int(row[0].(float64))
-		name := row[1].(string)
-		department := row[2].(string)
-
-		expectedRow := expectedJoinedRows[i]
-		expectedId := expectedRow[0].(int)
-		expectedName := expectedRow[1].(string)
-		expectedDepartment := expectedRow[2].(string)
-
-		if id != expectedId || name != expectedName || department != expectedDepartment {
-			t.Errorf("Row %d mismatch: expected %v, got %v", i, expectedRow, row)
-		}
-	}
-
-	lastBatch, err := ic.RowsBatchFromString(string(output.sentMessages[1]))
+	var lastMsg ic.Message
+	err = lastMsg.Unmarshal(output.sentMessages[1])
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %s", err)
 	}
-	if !lastBatch.IsEndSignal() {
-		t.Fatalf("Expected end signal in last message")
-	}
-}
-
-func TestJoinNoMatches(t *testing.T) {
-	leftColumns := []string{"id", "name"}
-	leftRows := [][]interface{}{
-		{1, "Alice"},
-		{2, "Bob"},
-	}
-	rightColumns := []string{"id", "department"}
-	rightRows := [][]interface{}{
-		{3, "HR"},
-		{4, "Engineering"},
-	}
-
-	config := &common.Config{
-		WorkerId:      "worker-1",
-		WorkersCount:  1,
-		JoinKey:       "id",
-		OutputColumns: []string{"id", "name", "department"},
-		BatchSize:     10,
-	}
-
-	leftBatch := ic.NewRowsBatch(leftColumns, leftRows)
-	rightBatch := ic.NewRowsBatch(rightColumns, rightRows)
-
-	leftBatchBytes, _ := leftBatch.Marshal()
-	rightBatchBytes, _ := rightBatch.Marshal()
-
-	leftInput := newStubConsumer()
-	rightInput := newStubConsumer()
-	output := newStubProducer()
-
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
-
-	go func() { joiner.Start() }()
-
-	rightInput.waitForStart()
-	rightInput.SimulateMessage(rightBatchBytes)
-	rightInput.SimulateMessage(endSignal)
-
-	leftInput.waitForStart()
-	leftInput.SimulateMessage(leftBatchBytes)
-	leftInput.SimulateMessage(endSignal)
-
-	output.waitForAMessage()
-
-	if len(output.sentMessages) != 1 {
-		t.Fatalf("Expected 1 message sent, got %d", len(output.sentMessages))
-	}
-
-	batch, err := ic.RowsBatchFromString(string(output.sentMessages[0]))
-	if err != nil {
-		t.Fatalf("Failed to unmarshal output message: %s", err)
-	}
-
-	if len(batch.Rows) != 0 {
-		t.Fatalf("Expected 0 joined rows, got %d", len(batch.Rows))
-	}
-
-	if !batch.IsEndSignal() {
+	if !isEndSignal(&lastMsg) {
 		t.Fatalf("Expected end signal in last message")
 	}
 }
@@ -281,9 +326,9 @@ func TestJoinMultipleBatches(t *testing.T) {
 		"Diana":   "Finance",
 	}
 
-	leftBatch1 := ic.NewRowsBatch(leftColumns, leftRows1)
-	leftBatch2 := ic.NewRowsBatch(leftColumns, leftRows2)
-	rightBatch := ic.NewRowsBatch(rightColumns, rightRows)
+	leftBatch1 := ic.NewRowsBatch(leftColumns, leftRows1, 0)
+	leftBatch2 := ic.NewRowsBatch(leftColumns, leftRows2, 1)
+	rightBatch := ic.NewRowsBatch(rightColumns, rightRows, 0)
 
 	leftBatchBytes1, _ := leftBatch1.Marshal()
 	leftBatchBytes2, _ := leftBatch2.Marshal()
@@ -309,13 +354,14 @@ func TestJoinMultipleBatches(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 	output.waitForAMessage()
+	output.waitForAMessage()
 
-	if len(output.sentMessages) != 3 {
-		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 4 {
+		t.Fatalf("Expected 4 messages sent, got %d", len(output.sentMessages))
 	}
 
 	for i := 0; i < 2; i++ {
-		joinedBatch, err := ic.RowsBatchFromString(string(output.sentMessages[i]))
+		joinedBatch, err := rowsBatchFromString(string(output.sentMessages[i]))
 		if err != nil {
 			t.Fatalf("Failed to unmarshal output message: %s", err)
 		}
@@ -338,11 +384,19 @@ func TestJoinMultipleBatches(t *testing.T) {
 		}
 	}
 
-	lastBatch, err := ic.RowsBatchFromString(string(output.sentMessages[2]))
+	msg, err := sequenceSetFromString(string(output.sentMessages[2]))
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %s", err)
 	}
-	if !lastBatch.IsEndSignal() {
+	if msg.Sequences.GetCardinality() != 2 {
+		t.Fatalf("Expected cardinality 2 in sequence set, got %d", msg.Sequences.GetCardinality())
+	}
+	var lastMsg ic.Message
+	err = lastMsg.Unmarshal(output.sentMessages[3])
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %s", err)
+	}
+	if !isEndSignal(&lastMsg) {
 		t.Fatalf("Expected end signal in last message")
 	}
 }
@@ -391,10 +445,10 @@ func TestMultipleJoiners(t *testing.T) {
 		"Diana":   "Finance",
 	}
 
-	leftBatch1 := ic.NewRowsBatch(leftColumns, leftRows1)
-	leftBatch2 := ic.NewRowsBatch(leftColumns, leftRows2)
-	leftBatch3 := ic.NewRowsBatch(leftColumns, leftRows3)
-	rightBatch := ic.NewRowsBatch(rightColumns, rightRows)
+	leftBatch1 := ic.NewRowsBatch(leftColumns, leftRows1, 0)
+	leftBatch2 := ic.NewRowsBatch(leftColumns, leftRows2, 1)
+	leftBatch3 := ic.NewRowsBatch(leftColumns, leftRows3, 2)
+	rightBatch := ic.NewRowsBatch(rightColumns, rightRows, 0)
 
 	leftBatchBytes1, _ := leftBatch1.Marshal()
 	leftBatchBytes2, _ := leftBatch2.Marshal()
@@ -429,28 +483,41 @@ func TestMultipleJoiners(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 	output.waitForAMessage()
+	output.waitForAMessage()
+	output.waitForAMessage()
 
-	if len(output.sentMessages) != 3 {
+	if len(output.sentMessages) != 5 {
 		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
 	}
 
-	for i := 0; i < 2; i++ {
-		joinedBatch, err := ic.RowsBatchFromString(string(output.sentMessages[i]))
+	endSignalCount := 0
+	ackedSequences := roaring.New()
+	for i := 0; i < len(output.sentMessages); i++ {
+		var msg ic.Message
+		err := msg.Unmarshal(output.sentMessages[i])
 		if err != nil {
 			t.Fatalf("Failed to unmarshal output message: %s", err)
 		}
+		switch p := msg.Payload.(type) {
+		case *ic.RowsBatchPayload:
+			for _, row := range p.Rows {
+				name := row[0].(string)
+				department := row[1].(string)
 
-		for _, row := range joinedBatch.Rows {
-			name := row[0].(string)
-			department := row[1].(string)
-
-			expectedDepartment, exists := expectedJoinedRows[name]
-			if !exists {
-				t.Errorf("Unexpected name %s in output", name)
-			} else if department != expectedDepartment {
-				t.Errorf("For name %s, expected department %s, got %s", name, expectedDepartment, department)
+				expectedDepartment, exists := expectedJoinedRows[name]
+				if !exists {
+					t.Errorf("Unexpected name %s in output", name)
+				} else if department != expectedDepartment {
+					t.Errorf("For name %s, expected department %s, got %s", name, expectedDepartment, department)
+				}
+				delete(expectedJoinedRows, name)
 			}
-			delete(expectedJoinedRows, name)
+		case *ic.SequenceSetPayload:
+			ackedSequences.Or(p.Sequences.Bitmap)
+		case *ic.EndSignalPayload:
+			endSignalCount++
+		default:
+			t.Errorf("Unexpected payload type %T in output", msg.Payload)
 		}
 	}
 
@@ -458,11 +525,11 @@ func TestMultipleJoiners(t *testing.T) {
 		t.Errorf("Some expected rows were not found in output: %v", expectedJoinedRows)
 	}
 
-	lastBatch, err := ic.RowsBatchFromString(string(output.sentMessages[2]))
-	if err != nil {
-		t.Fatalf("Failed to unmarshal output message: %s", err)
+	if ackedSequences.GetCardinality() != 3 {
+		t.Errorf("Expected cardinality 3 in sequence set, got %d", ackedSequences.GetCardinality())
 	}
-	if !lastBatch.IsEndSignal() {
-		t.Fatalf("Expected end signal in last message")
+
+	if endSignalCount != 1 {
+		t.Errorf("Expected 1 end signals, got %d", endSignalCount)
 	}
 }

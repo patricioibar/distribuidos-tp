@@ -99,6 +99,7 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	}
 	json.Unmarshal(headerJson, &header)
 	log.Infof("Received header: %v", header)
+	var seqNumber uint64 = 0
 	for {
 		data, err := s.ReadBatch()
 		if err != nil {
@@ -107,11 +108,12 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 		}
 		var payload [][]interface{}
 		json.Unmarshal(data, &payload)
-		rowsBatch := innercommunication.NewRowsBatch(header, payload)
+		rowsBatch := innercommunication.NewRowsBatch(header, payload, seqNumber)
 		rowsBatchMarshaled, _ := rowsBatch.Marshal()
 		producer.Send(rowsBatchMarshaled)
+		seqNumber++
 	}
-	endSignal := innercommunication.NewEndSignal()
+	endSignal := innercommunication.NewEndSignal(nil, seqNumber)
 	endSignalMarshaled, _ := endSignal.Marshal()
 	producer.Send(endSignalMarshaled)
 	producer.Close()

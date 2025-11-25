@@ -9,7 +9,7 @@ import (
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 )
 
-func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
+func filterRowsByYear(batch *ic.RowsBatchPayload) (*ic.Message, error) {
 	var filteredRows [][]interface{}
 
 	indexYear := -1
@@ -22,7 +22,7 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	if indexYear == -1 {
 		// log.Infof("Colum names received: %v", batch.ColumnNames)
-		return ic.RowsBatch{}, errors.New("created_at column not found")
+		return nil, errors.New("created_at column not found")
 	}
 
 	monthsOfFirstSemester := map[time.Month]bool{
@@ -36,16 +36,16 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 
 	for _, row := range batch.Rows {
 		if len(row) <= indexYear {
-			return ic.RowsBatch{}, errors.New("row does not have enough columns")
+			return nil, errors.New("row does not have enough columns")
 		}
 
 		tsVal, ok := row[indexYear].(string)
 		if !ok {
-			return ic.RowsBatch{}, errors.New("created_at column is not a string")
+			return nil, errors.New("created_at column is not a string")
 		}
 		timestamp, err := parseTimestamp(tsVal)
 		if err != nil {
-			return ic.RowsBatch{}, err
+			return nil, err
 		}
 
 		if timestamp.Year() == 2024 || timestamp.Year() == 2025 {
@@ -64,15 +64,11 @@ func filterRowsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	batch.ColumnNames = append(batch.ColumnNames, "semester")
 	batch.ColumnNames = append(batch.ColumnNames, "year")
 	batch.ColumnNames = append(batch.ColumnNames, "month")
-	filteredBatch := ic.RowsBatch{
-		ColumnNames: batch.ColumnNames,
-		EndSignal:   false,
-		Rows:        filteredRows,
-	}
+	filteredBatch := ic.NewRowsBatch(batch.ColumnNames, filteredRows, batch.SeqNum)
 	return filteredBatch, nil
 }
 
-func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
+func filterRowsByHour(batch *ic.RowsBatchPayload) (*ic.Message, error) {
 	var filteredRows [][]interface{}
 
 	indexTimestamp := -1
@@ -84,21 +80,21 @@ func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	}
 
 	if indexTimestamp == -1 {
-		return ic.RowsBatch{}, errors.New("created_at column not found")
+		return nil, errors.New("created_at column not found")
 	}
 
 	for _, row := range batch.Rows {
 		if len(row) <= indexTimestamp {
-			return ic.RowsBatch{}, errors.New("row does not have enough columns")
+			return nil, errors.New("row does not have enough columns")
 		}
 
 		tsVal, ok := row[indexTimestamp].(string)
 		if !ok {
-			return ic.RowsBatch{}, errors.New("timestamp column is not a string")
+			return nil, errors.New("timestamp column is not a string")
 		}
 		timestamp, err := parseTimestamp(tsVal)
 		if err != nil {
-			return ic.RowsBatch{}, err
+			return nil, err
 		}
 
 		if timestamp.Hour() >= 6 && timestamp.Hour() < 23 {
@@ -106,15 +102,11 @@ func filterRowsByHour(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		}
 	}
 
-	filteredBatch := ic.RowsBatch{
-		ColumnNames: batch.ColumnNames,
-		EndSignal:   false,
-		Rows:        filteredRows,
-	}
+	filteredBatch := ic.NewRowsBatch(batch.ColumnNames, filteredRows, batch.SeqNum)
 	return filteredBatch, nil
 }
 
-func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
+func filterRowsByTransactionAmount(batch *ic.RowsBatchPayload) (*ic.Message, error) {
 	var filteredRows [][]interface{}
 
 	indexAmount := -1
@@ -126,12 +118,12 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	}
 
 	if indexAmount == -1 {
-		return ic.RowsBatch{}, errors.New("final_amount column not found")
+		return nil, errors.New("final_amount column not found")
 	}
 
 	for _, row := range batch.Rows {
 		if len(row) <= indexAmount {
-			return ic.RowsBatch{}, errors.New("row does not have enough columns")
+			return nil, errors.New("row does not have enough columns")
 		}
 
 		var amountVal float64
@@ -141,7 +133,7 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 			var err error
 			amountVal, err = parseToFloat64(row[indexAmount])
 			if err != nil {
-				return ic.RowsBatch{}, errors.New("final_amount column could not be parsed as float64")
+				return nil, errors.New("final_amount column could not be parsed as float64")
 			}
 		}
 
@@ -150,11 +142,7 @@ func filterRowsByTransactionAmount(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		}
 	}
 
-	filteredBatch := ic.RowsBatch{
-		ColumnNames: batch.ColumnNames,
-		EndSignal:   false,
-		Rows:        filteredRows,
-	}
+	filteredBatch := ic.NewRowsBatch(batch.ColumnNames, filteredRows, batch.SeqNum)
 	return filteredBatch, nil
 
 }
@@ -172,7 +160,7 @@ func parseToFloat64(value interface{}) (float64, error) {
 	}
 }
 
-func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
+func filterTransactionItemsByYear(batch *ic.RowsBatchPayload) (*ic.Message, error) {
 	var filteredRows [][]interface{}
 
 	indexYear := -1
@@ -184,21 +172,21 @@ func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 	}
 
 	if indexYear == -1 {
-		return ic.RowsBatch{}, errors.New("created_at column not found")
+		return nil, errors.New("created_at column not found")
 	}
 
 	for _, row := range batch.Rows {
 		if len(row) <= indexYear {
-			return ic.RowsBatch{}, errors.New("row does not have enough columns")
+			return nil, errors.New("row does not have enough columns")
 		}
 
 		tsVal, ok := row[indexYear].(string)
 		if !ok {
-			return ic.RowsBatch{}, errors.New("year column is not a string")
+			return nil, errors.New("year column is not a string")
 		}
 		timestamp, err := parseTimestamp(tsVal)
 		if err != nil {
-			return ic.RowsBatch{}, err
+			return nil, err
 		}
 
 		if timestamp.Year() == 2024 || timestamp.Year() == 2025 {
@@ -208,11 +196,7 @@ func filterTransactionItemsByYear(batch ic.RowsBatch) (ic.RowsBatch, error) {
 		}
 	}
 	batch.ColumnNames = append(batch.ColumnNames, "year-month")
-	filteredBatch := ic.RowsBatch{
-		ColumnNames: batch.ColumnNames,
-		EndSignal:   false,
-		Rows:        filteredRows,
-	}
+	filteredBatch := ic.NewRowsBatch(batch.ColumnNames, filteredRows, batch.SeqNum)
 	return filteredBatch, nil
 }
 

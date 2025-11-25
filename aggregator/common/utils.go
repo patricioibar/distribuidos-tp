@@ -10,7 +10,7 @@ import (
 const KeyPartsSeparator = "|"
 const AggFuncColSeparator = "_"
 
-func getAggColIndexes(config *Config, batch *ic.RowsBatch) map[string]int {
+func getAggColIndexes(config *Config, batch *ic.RowsBatchPayload) map[string]int {
 	var aggColIndexes map[string]int = make(map[string]int)
 	for _, agg := range config.Aggregations {
 		for i, colName := range batch.ColumnNames {
@@ -23,7 +23,7 @@ func getAggColIndexes(config *Config, batch *ic.RowsBatch) map[string]int {
 	return aggColIndexes
 }
 
-func getGroupByColIndexes(config *Config, batch *ic.RowsBatch) []int {
+func getGroupByColIndexes(config *Config, batch *ic.RowsBatchPayload) []int {
 	return getIndexes(config.GroupBy, batch.ColumnNames)
 }
 
@@ -77,7 +77,7 @@ func getBatchFromAggregatedRows(
 	aggregations []a.AggConfig,
 	isReducer bool,
 	aggregatedRows *[][]interface{},
-) *ic.RowsBatch {
+) *ic.RowsBatchPayload {
 	var aggregatedColumnNames []string
 
 	aggregatedColumnNames = append(aggregatedColumnNames, groupByColNames...)
@@ -92,7 +92,7 @@ func getBatchFromAggregatedRows(
 		aggregatedColumnNames = append(aggregatedColumnNames, aggColName)
 	}
 
-	return &ic.RowsBatch{
+	return &ic.RowsBatchPayload{
 		ColumnNames: aggregatedColumnNames,
 		Rows:        *aggregatedRows,
 	}

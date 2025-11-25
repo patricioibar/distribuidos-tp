@@ -11,43 +11,52 @@ import (
 
 func (rp *ResponseParser) parseQuery3Response() mw.OnMessageCallback {
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
-		jsonStr := string(msg.Body)
-		batch, err := ic.RowsBatchFromString(jsonStr)
 
+		jsonStr := string(msg.Body)
+		var receivedMsg ic.Message
+		err := receivedMsg.Unmarshal([]byte(jsonStr))
 		if err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
 			done <- nil
 			return
 		}
 
-		if batch.IsEndSignal() {
-			done <- nil
-			rp.queryResultReceived(3, 2)
-			return
-		}
+		switch p := receivedMsg.Payload.(type) {
 
-		for i, col := range batch.ColumnNames {
-			if strings.Contains(col, "sum") {
-				batch.ColumnNames[i] = "tpv"
-				break
+		case *ic.RowsBatchPayload:
+			for i, col := range p.ColumnNames {
+				if strings.Contains(col, "sum") {
+					p.ColumnNames[i] = "tpv"
+					break
+				}
 			}
-		}
 
-		parsedBatch := c.QueryResponseBatch{
-			QueryId: 3,
-			Columns: batch.ColumnNames,
-			Rows:    genericRowsToStringRows(batch.Rows),
-		}
+			parsedBatch := c.QueryResponseBatch{
+				QueryId: 3,
+				Columns: p.ColumnNames,
+				Rows:    genericRowsToStringRows(p.Rows),
+			}
 
-		data, err := json.Marshal(parsedBatch)
-		if err != nil {
-			log.Errorf("Failed to marshal response: %v", err)
+			data, err := json.Marshal(parsedBatch)
+			if err != nil {
+				log.Errorf("Failed to marshal response: %v", err)
+				done <- nil
+				return
+			}
+			if err := rp.socket.SendBatch(data); err != nil {
+				log.Errorf("Failed to send batch: %v", err)
+			}
 			done <- nil
-			return
+
+		case *ic.EndSignalPayload:
+			rp.queryResultReceived(3, 2)
+			done <- nil
+		// case *ic.SequenceSetPayload:
+
+		default:
+			log.Errorf("Unknown payload type")
+			done <- nil
+
 		}
-		if err := rp.socket.SendBatch(data); err != nil {
-			log.Errorf("Failed to send batch: %v", err)
-		}
-		done <- nil
 	}
 }

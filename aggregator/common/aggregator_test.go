@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	roaring "github.com/RoaringBitmap/roaring/roaring64"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -88,7 +89,7 @@ func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
 func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
-var endSignal, _ = ic.NewEndSignal().Marshal()
+var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
 func TestSumAggregatorWorker(t *testing.T) {
 	config := &common.Config{
@@ -107,6 +108,7 @@ func TestSumAggregatorWorker(t *testing.T) {
 			{"B", 20},
 			{"A", 30},
 		},
+		0,
 	).Marshal()
 	input.SimulateMessage(msg)
 	input.SimulateMessage(msg)
@@ -114,14 +116,24 @@ func TestSumAggregatorWorker(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 
-	if len(output.sentMessages) != 2 {
-		t.Fatalf("Expected 2 message sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 3 {
+		t.Fatalf("Expected 3 message sent, got %d", len(output.sentMessages))
 	}
 
-	var outputBatch ic.RowsBatch
-	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
+	println("Received messages:")
+	for _, m := range output.sentMessages {
+		fmt.Printf("%s\n", string(m))
+	}
+
+	var outputMsg ic.Message
+	err := json.Unmarshal(output.sentMessages[0], &outputMsg)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
+	}
+
+	outputBatch, ok := outputMsg.Payload.(*ic.RowsBatchPayload)
+	if !ok || outputBatch == nil {
+		t.Fatalf("Failed to cast payload to *ic.RowsBatchPayload, got: %T", outputMsg.Payload)
 	}
 
 	expectedRows := map[string]float64{"A": 80.0, "B": 40.0}
@@ -159,6 +171,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 			{"B", 20},
 			{"A", 30},
 		},
+		0,
 	).Marshal()
 	input.SimulateMessage(msg)
 	input.SimulateMessage(msg)
@@ -166,14 +179,22 @@ func TestCountAggregatorWorker(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 
-	if len(output.sentMessages) != 2 {
-		t.Fatalf("Expected 2 message sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 3 {
+		t.Fatalf("Expected 3 message sent, got %d", len(output.sentMessages))
 	}
-
-	var outputBatch ic.RowsBatch
-	err := json.Unmarshal(output.sentMessages[0], &outputBatch)
+	println("Received messages:")
+	for _, m := range output.sentMessages {
+		fmt.Printf("%s\n", string(m))
+	}
+	var outputMsg ic.Message
+	err := json.Unmarshal(output.sentMessages[0], &outputMsg)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
+	}
+
+	outputBatch, ok := outputMsg.Payload.(*ic.RowsBatchPayload)
+	if !ok || outputBatch == nil {
+		t.Fatalf("Failed to cast payload to *ic.RowsBatchPayload, got: %T", outputMsg.Payload)
 	}
 
 	expectedRows := map[string]int{"A": 4, "B": 2}
@@ -228,7 +249,7 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 	config1 := &common.Config{
 		GroupBy: []string{"category"},
 		Aggregations: []agf.AggConfig{
-			{Col: "value", Func: "count"},
+			{Col: "category", Func: "count"},
 			{Col: "value", Func: "sum"}},
 		BatchSize: 10,
 	}
@@ -240,52 +261,70 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 			{"B", 20},
 			{"A", 30},
 		},
+		0,
 	).Marshal()
 	inputs.SimulateMessage(msg)
 	inputs.SimulateMessage(endSignal)
 	output.waitForAMessage()
 	output.waitForAMessage()
 
-	if len(output.sentMessages) != 2 {
-		msg, _ := ic.RowsBatchFromString(string(output.sentMessages[0]))
-		t.Fatalf("Expected 2 message sent, got %d: %v", len(output.sentMessages), msg)
+	if len(output.sentMessages) != 4 {
+		t.Errorf("Expected 4 message sent, got %d:", len(output.sentMessages))
+		for _, m := range output.sentMessages {
+			t.Errorf("%s\n", string(m))
+		}
+		t.FailNow()
+	}
+
+	println("Received messages:")
+	for _, m := range output.sentMessages {
+		fmt.Printf("%s\n", string(m))
 	}
 
 	expectedRows := map[string][]interface{}{"A": {2, 40.0}, "B": {1, 20.0}}
-	for _, msg := range output.sentMessages[:2] {
-		outputBatch, err := ic.RowsBatchFromString(string(msg))
+	endSignalCount := 0
+	ackedSeqs := roaring.NewBitmap()
+	for _, msg := range output.sentMessages[:4] {
+		var outputMsg ic.Message
+		err := json.Unmarshal([]byte(msg), &outputMsg)
 		if err != nil {
 			t.Fatalf("Failed to unmarshal output message: %v", err)
 		}
 
-		if len(outputBatch.Rows) != len(expectedRows) {
-			t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
+		switch p := outputMsg.Payload.(type) {
+		case *ic.EndSignalPayload:
+			endSignalCount++
+		case *ic.RowsBatchPayload:
+			if len(p.Rows) != len(expectedRows) {
+				t.Errorf("Expected %d rows, got %d", len(expectedRows), len(p.Rows))
+			}
+			for _, row := range p.Rows {
+				category := row[0].(string)
+				count := int(row[1].(float64)) // JSON numbers are always float64
+				sum := row[2].(float64)
+				expected, exists := expectedRows[category]
+				if !exists {
+					t.Errorf("Unexpected category %s in output", category)
+				}
+				if count != expected[0] {
+					t.Errorf("Expected count for category %s to be %d, got %d", category, expected[0], count)
+				}
+				if sum != expected[1] {
+					t.Errorf("Expected sum for category %s to be %v, got %v", category, expected[1], sum)
+				}
+				delete(expectedRows, category)
+			}
+		case *ic.SequenceSetPayload:
+			ackedSeqs.Or(p.Sequences.Bitmap)
+		default:
+			t.Errorf("Unexpected payload type: %T", outputMsg.Payload)
 		}
-		for _, row := range outputBatch.Rows {
-			category := row[0].(string)
-			count := int(row[1].(float64)) // JSON numbers are always float64
-			sum := row[2].(float64)
-			expected, exists := expectedRows[category]
-			if !exists {
-				t.Fatalf("Unexpected category %s in output", category)
-			}
-			if count != expected[0] {
-				t.Fatalf("Expected count for category %s to be %d, got %d", category, expected[0], count)
-			}
-			if sum != expected[1] {
-				t.Fatalf("Expected sum for category %s to be %v, got %v", category, expected[1], sum)
-			}
-			delete(expectedRows, category)
-		}
 	}
 
-	endSignal, err := ic.RowsBatchFromString(string(output.sentMessages[1]))
-	if err != nil {
-		t.Fatalf("Failed to unmarshal output message: %v", err)
+	if ackedSeqs.GetCardinality() != 1 {
+		t.Errorf("Expected 1 acked sequence number, got %d", ackedSeqs.GetCardinality())
 	}
-
-	if !endSignal.IsEndSignal() {
-		t.Fatalf("Expected end signal, got regular message")
+	if endSignalCount != 1 {
+		t.Errorf("Expected 1 end signal, got %d", endSignalCount)
 	}
-
 }
