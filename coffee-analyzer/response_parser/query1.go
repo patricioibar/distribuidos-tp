@@ -17,42 +17,52 @@ func (rp *ResponseParser) parseQuery1Response() mw.OnMessageCallback {
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 
 		jsonStr := string(msg.Body)
-		batch, err := ic.RowsBatchFromString(jsonStr)
-
+		var receivedMsg ic.Message
+		err := receivedMsg.Unmarshal([]byte(jsonStr))
 		if err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
 			done <- nil
 			return
 		}
 
-		if batch.IsEndSignal() {
+		switch p := receivedMsg.Payload.(type) {
+
+		case *ic.RowsBatchPayload:
+
+			rows := retainColumns(p, query1OutputColumns)
+
+			parsedBatch := c.QueryResponseBatch{
+				QueryId: 1,
+				Columns: query1OutputColumns,
+				Rows:    genericRowsToStringRows(rows),
+			}
+
+			data, err := json.Marshal(parsedBatch)
+			if err != nil {
+				log.Errorf("Failed to marshal response: %v", err)
+				done <- nil
+				return
+			}
+			if err := rp.socket.SendBatch(data); err != nil {
+				log.Errorf("Failed to send batch: %v", err)
+			}
 			done <- nil
+
+		case *ic.EndSignalPayload:
 			rp.queryResultReceived(1, 0)
-			return
-		}
-
-		rows := retainColumns(batch, query1OutputColumns)
-
-		parsedBatch := c.QueryResponseBatch{
-			QueryId: 1,
-			Columns: query1OutputColumns,
-			Rows:    genericRowsToStringRows(rows),
-		}
-
-		data, err := json.Marshal(parsedBatch)
-		if err != nil {
-			log.Errorf("Failed to marshal response: %v", err)
 			done <- nil
-			return
+
+		// case *ic.SequenceSetPayload:
+
+		default:
+			log.Errorf("Unknown payload type")
+			done <- nil
+
 		}
-		if err := rp.socket.SendBatch(data); err != nil {
-			log.Errorf("Failed to send batch: %v", err)
-		}
-		done <- nil
 	}
 }
 
-func retainColumns(batch *ic.RowsBatch, query1OutputColumns []string) [][]interface{} {
+func retainColumns(batch *ic.RowsBatchPayload, query1OutputColumns []string) [][]interface{} {
 	colIndices := getColIndices(query1OutputColumns, batch)
 	retainedRows := make([][]interface{}, len(batch.Rows))
 	for i, row := range batch.Rows {
@@ -65,7 +75,7 @@ func retainColumns(batch *ic.RowsBatch, query1OutputColumns []string) [][]interf
 	return retainedRows
 }
 
-func getColIndices(query1OutputColumns []string, batch *ic.RowsBatch) []int {
+func getColIndices(query1OutputColumns []string, batch *ic.RowsBatchPayload) []int {
 	colIndices := make([]int, 0, len(query1OutputColumns))
 	for _, colName := range query1OutputColumns {
 		for i, batchColName := range batch.ColumnNames {
