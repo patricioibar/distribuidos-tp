@@ -83,10 +83,14 @@ func (it *walIterator) Close() error {
 	return nil
 }
 
-// Last returns the last valid entry from all WAL files.
-// It iterates through all entries to find the last one.
+// Last returns the last valid entry from all WAL files and any error encountered.
+// If a torn write or other error occurs, it returns the last successfully read entry
+// along with the error. This allows callers to recover the last valid state while
+// being aware that the WAL may have incomplete writes.
+// Returns (nil, io.EOF) if no entries exist.
 func (it *walIterator) Last() ([]byte, error) {
 	var lastEntry []byte
+	var lastErr error
 
 	for {
 		entry, err := it.Next()
@@ -94,7 +98,9 @@ func (it *walIterator) Last() ([]byte, error) {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			// Store the error but keep the last valid entry
+			lastErr = err
+			break
 		}
 		lastEntry = entry
 	}
@@ -103,5 +109,6 @@ func (it *walIterator) Last() ([]byte, error) {
 		return nil, io.EOF
 	}
 
-	return lastEntry, nil
+	// Return last valid entry with any error that occurred after it
+	return lastEntry, lastErr
 }
