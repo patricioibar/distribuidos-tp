@@ -3,7 +3,6 @@ package persistance
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,7 +16,14 @@ type StateLog interface {
 	Commit() error
 	RotateWAL() error
 	WriteSnapshot(state []byte) (string, error)
-	Restore() ([]byte, [][]byte, error)
+	Restore() ([]byte, EntryIterator, error)
+	Close() error
+}
+
+type SimpleWAL interface {
+	Append(entry []byte) error
+	Commit() error
+	Restore() (EntryIterator, error)
 	Close() error
 }
 
@@ -27,6 +33,11 @@ type stateLog struct {
 	snapshotDir string
 	walTs       int64
 	walFile     *os.File
+}
+
+type simpleWAL struct {
+	walPath string
+	walFile *os.File
 }
 
 const (
@@ -139,7 +150,8 @@ func (l *stateLog) WriteSnapshot(state []byte) (string, error) {
 	return filepath.Base(dst), nil
 }
 
-func (l *stateLog) Restore() ([]byte, [][]byte, error) {
+// Returns the latest snapshot data and an iterator over WAL entries after that snapshot
+func (l *stateLog) Restore() ([]byte, EntryIterator, error) {
 	// 1: Primero agarro el ultimo archivo de snapshot
 	snaps, err := filepath.Glob(filepath.Join(l.snapshotDir, snapPrefix+"*"+snapSuffix))
 	if err != nil {
@@ -192,38 +204,16 @@ func (l *stateLog) Restore() ([]byte, [][]byte, error) {
 
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].ts < candidates[j].ts })
 
-	// 3: leer las entradas de los wals de forma secuencial
-	var entries [][]byte
+	// 3: Build list of WAL file paths for iterator
+	var walPaths []string
 	for _, c := range candidates {
-		f, err := os.Open(c.path)
-		if err != nil {
-			return nil, nil, err
-		}
-		for {
-			var length uint32
-			if err := binary.Read(f, binary.LittleEndian, &length); err != nil {
-				if err == io.EOF {
-					break
-				}
-				f.Close()
-				return nil, nil, err
-			}
-			buf := make([]byte, length)
-			n, err := io.ReadFull(f, buf)
-			if err == io.ErrUnexpectedEOF || uint32(n) < length {
-				// escritura incompleta aca, si se quiere avisar o indicar este fallo de alguna forma <Agragar codigo aca>
-				break
-			}
-			if err != nil {
-				f.Close()
-				return nil, nil, err
-			}
-			entries = append(entries, buf)
-		}
-		f.Close()
+		walPaths = append(walPaths, c.path)
 	}
 
-	return snapData, entries, nil
+	// Create iterator for the WAL files
+	iter := newWALIterator(walPaths)
+
+	return snapData, iter, nil
 }
 
 // Closes the currently opended WAL file
@@ -245,4 +235,58 @@ func parseTsFromFilename(name, prefix, suffix string) (int64, error) {
 		return 0, err
 	}
 	return ts, nil
+}
+
+func newSimpleWAL(walPath string) (SimpleWAL, error) {
+	wf, err := os.OpenFile(walPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	return &simpleWAL{
+		walPath: walPath,
+		walFile: wf,
+	}, nil
+}
+
+func (l *simpleWAL) Append(entry []byte) error {
+	if l.walFile == nil {
+		return fmt.Errorf("wal not opened")
+	}
+	if err := binary.Write(l.walFile, binary.LittleEndian, uint32(len(entry))); err != nil {
+		return err
+	}
+	_, err := l.walFile.Write(entry)
+	return err
+}
+
+func (l *simpleWAL) Commit() error {
+	if l.walFile == nil {
+		return fmt.Errorf("wal not opened")
+	}
+	return l.walFile.Sync()
+}
+
+// Returns an iterator over the WAL entries
+func (l *simpleWAL) Restore() (EntryIterator, error) {
+	return newWALIterator([]string{l.walPath}), nil
+}
+
+func (l *simpleWAL) getLastEntry() ([]byte, error) {
+	it, err := l.Restore()
+	if err != nil {
+		return nil, err
+	}
+	lastEntry, err := it.Last()
+	if err != nil {
+		return nil, err
+	}
+	return lastEntry, nil
+}
+
+func (l *simpleWAL) Close() error {
+	if l.walFile != nil {
+		return l.walFile.Close()
+	}
+	return nil
 }
