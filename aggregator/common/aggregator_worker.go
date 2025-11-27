@@ -87,6 +87,15 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 
 		switch p := receivedMessage.Payload.(type) {
 		case *ic.RowsBatchPayload:
+			if aw.processedBatches.Contains(p.SeqNum) {
+				log.Warningf(
+					"%s received duplicated data for job %s! Sequence number: %d. Ignoring batch.",
+					aw.Config.WorkerId, aw.jobID, p.SeqNum,
+				)
+				done <- nil
+				return
+			}
+
 			if len(p.Rows) != 0 {
 				aw.aggregateBatch(p)
 			}
@@ -100,7 +109,7 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 				aw.Config.Aggregations,
 				aw.reducedData,
 			)
-			aw.sendRetainedData(retainedData)
+			aw.sendRetainedData(retainedData, 0)
 			aw.sendProcessedBatches()
 			aw.PropagateEndSignal(p)
 			done <- nil
@@ -113,6 +122,10 @@ func (aw *AggregatorWorker) messageCallback() mw.OnMessageCallback {
 					"%s received duplicated data for job %s! Received %d duplicated sequence numbers: %s",
 					aw.Config.WorkerId, aw.jobID, intersection.GetCardinality(), intersection.String(),
 				)
+				if !aw.Config.IsReducer {
+					done <- nil
+					return
+				}
 
 				// TODO handle duplicated data case
 			} else {
@@ -139,7 +152,7 @@ func (aw *AggregatorWorker) sendProcessedBatches() {
 	}
 }
 
-func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData) {
+func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData, nextBatchSeq uint64) {
 	log.Debugf("Worker %s sending retained data, different formats: %d", aw.Config.WorkerId, len(differentFormats))
 	uniqueKeyColumns := make(map[string]struct{})
 	uniqueAggregations := make(map[string]struct{})
@@ -165,7 +178,7 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 		}
 		outputAggregations = append(outputAggregations, agg)
 	}
-
+	var seq uint64 = 0
 	for _, dataInfo := range differentFormats {
 		log.Debugf(
 			"key_columns: %v, aggregations: %v, total groups: %d",
@@ -186,8 +199,11 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 		i := 0
 		for _, row := range dataInfo.Data {
 			if i >= batchSize {
-				aw.sendDataBatch(dataBatch)
+				if seq >= nextBatchSeq {
+					aw.sendDataBatch(dataBatch, seq)
+				}
 
+				seq++
 				dataBatch.Data = make([][]interface{}, 0)
 				i = 0
 			}
@@ -217,7 +233,7 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 		}
 
 		if len(dataBatch.Data) > 0 {
-			aw.sendDataBatch(dataBatch)
+			aw.sendDataBatch(dataBatch, seq)
 
 		}
 	}
@@ -293,14 +309,14 @@ func hasNil(groupByIndexes []int, row []interface{}) bool {
 	return false
 }
 
-func (aw *AggregatorWorker) sendDataBatch(data dr.RetainedData) {
+func (aw *AggregatorWorker) sendDataBatch(data dr.RetainedData, seq uint64) {
 	batch := getBatchFromAggregatedRows(
 		data.KeyColumns,
 		data.Aggregations,
 		aw.Config.IsReducer,
 		&data.Data,
 	)
-	msg := ic.NewRowsBatch(batch.ColumnNames, batch.Rows, 0)
+	msg := ic.NewAggregatedData(batch.ColumnNames, batch.Rows, aw.Config.WorkerId, seq)
 	batchBytes, err := msg.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal batch: %v", err)

@@ -12,9 +12,10 @@ import (
 type MessageType string
 
 const (
-	MsgRowsBatch   MessageType = "RowsBatch"
-	MsgEndSignal   MessageType = "EndSignal"
-	MsgSequenceSet MessageType = "SequenceSet"
+	MsgRowsBatch      MessageType = "RowsBatch"
+	MsgEndSignal      MessageType = "EndSignal"
+	MsgSequenceSet	  MessageType = "SequenceSet"
+	MsgAggregatedData MessageType = "AggregatedData"
 )
 
 // --- Estructuras de Datos (Payloads) ---
@@ -43,6 +44,13 @@ type JSONRoaringBitmap struct {
 type SequenceSetPayload struct {
 	Sequences *JSONRoaringBitmap `json:"sequences"` // Wrapper personalizado
 	WorkerID  string             `json:"worker_id"`
+}
+
+type AggregatedDataPayload struct {
+	ColumnNames []string        `json:"column_names"`
+	Rows        [][]interface{} `json:"rows"`
+	WorkerID	string			`json:"worker_id"`
+	SeqNum      uint64          `json:"seq_num"`
 }
 
 // --- El Mensaje (Envelope) ---
@@ -128,6 +136,13 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		m.Payload = &p
+	
+	case MsgAggregatedData:
+		var p AggregatedDataPayload
+		if err := json.Unmarshal(temp.Payload, &p); err != nil {
+			return err
+		}
+		m.Payload = &p
 
 	default:
 		return fmt.Errorf("tipo de mensaje desconocido: %s", m.Type)
@@ -164,6 +179,18 @@ func NewSequenceSet(workerID string, bitmap *roaring.Bitmap) *Message {
 		Payload: &SequenceSetPayload{
 			Sequences: &JSONRoaringBitmap{Bitmap: bitmap},
 			WorkerID:  workerID,
+		},
+	}
+}
+
+func NewAggregatedData(cols []string, rows [][]interface{}, workerID string, seq uint64) *Message {
+	return &Message{
+		Type: MsgAggregatedData,
+		Payload: &AggregatedDataPayload{
+			ColumnNames: cols,
+			Rows:        rows,
+			WorkerID:    workerID,
+			SeqNum:      seq,
 		},
 	}
 }
