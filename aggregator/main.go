@@ -116,7 +116,7 @@ func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.A
 			return
 		}
 
-		aggregator := common.NewAggregatorWorker(config, input, output, jobStr, removeFromMap)
+		aggregator := common.NewAggregatorWorker(config, input, output, jobStr, removeFromMap, 0)
 		jobsMapLock.Lock()
 		jobsMap[jobStr] = aggregator
 		jobsMapLock.Unlock()

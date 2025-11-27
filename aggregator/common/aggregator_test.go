@@ -110,8 +110,17 @@ func TestSumAggregatorWorker(t *testing.T) {
 		},
 		0,
 	).Marshal()
+	msg1, _ := ic.NewRowsBatch(
+		[]string{"category", "value"},
+		[][]interface{}{
+			{"A", 10},
+			{"B", 20},
+			{"A", 30},
+		},
+		1,
+	).Marshal()
 	input.SimulateMessage(msg)
-	input.SimulateMessage(msg)
+	input.SimulateMessage(msg1)
 	input.SimulateMessage(endSignal)
 	output.waitForAMessage()
 	output.waitForAMessage()
@@ -131,9 +140,9 @@ func TestSumAggregatorWorker(t *testing.T) {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
 	}
 
-	outputBatch, ok := outputMsg.Payload.(*ic.RowsBatchPayload)
+	outputBatch, ok := outputMsg.Payload.(*ic.AggregatedDataPayload)
 	if !ok || outputBatch == nil {
-		t.Fatalf("Failed to cast payload to *ic.RowsBatchPayload, got: %T", outputMsg.Payload)
+		t.Fatalf("Failed to cast payload to *ic.AggregatedDataPayload, got: %T", outputMsg.Payload)
 	}
 
 	expectedRows := map[string]float64{"A": 80.0, "B": 40.0}
@@ -173,8 +182,17 @@ func TestCountAggregatorWorker(t *testing.T) {
 		},
 		0,
 	).Marshal()
+	msg2, _ := ic.NewRowsBatch(
+		[]string{"category", "value"},
+		[][]interface{}{
+			{"A", 10},
+			{"B", 20},
+			{"A", 30},
+		},
+		1,
+	).Marshal()
 	input.SimulateMessage(msg)
-	input.SimulateMessage(msg)
+	input.SimulateMessage(msg2)
 	input.SimulateMessage(endSignal)
 	output.waitForAMessage()
 	output.waitForAMessage()
@@ -192,9 +210,9 @@ func TestCountAggregatorWorker(t *testing.T) {
 		t.Fatalf("Failed to unmarshal output message: %v", err)
 	}
 
-	outputBatch, ok := outputMsg.Payload.(*ic.RowsBatchPayload)
+	outputBatch, ok := outputMsg.Payload.(*ic.AggregatedDataPayload)
 	if !ok || outputBatch == nil {
-		t.Fatalf("Failed to cast payload to *ic.RowsBatchPayload, got: %T", outputMsg.Payload)
+		t.Fatalf("Failed to cast payload to *ic.AggregatedDataPayload, got: %T", outputMsg.Payload)
 	}
 
 	expectedRows := map[string]int{"A": 4, "B": 2}
@@ -219,7 +237,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 func newWorker(config *common.Config) (*StubConsumer, *StubProducer) {
 	input := newStubConsumer()
 	output := newStubProducer()
-	worker := common.NewAggregatorWorker(config, input, output, "", make(chan string, 1))
+	worker := common.NewAggregatorWorker(config, input, output, "", make(chan string, 1), 0)
 	go worker.Start()
 	input.waitForStart()
 	return input, output
@@ -238,11 +256,75 @@ func newWorkers(config *common.Config, workersCount int) (*StubConsumer, *StubPr
 			WorkerId:     fmt.Sprintf("worker-%d", i+1),
 			LogLevel:     "DEBUG",
 		}
-		worker := common.NewAggregatorWorker(&configCopy, input, output, "", make(chan string, 1))
+		worker := common.NewAggregatorWorker(&configCopy, input, output, "", make(chan string, 1), 0)
 		go worker.Start()
 		input.waitForStart()
 	}
 	return input, output
+}
+
+func TestSumDuplicatedMessageAggregatorWorker(t *testing.T) {
+	config := &common.Config{
+		WorkerId:     "worker-1",
+		GroupBy:      []string{"category"},
+		Aggregations: []agf.AggConfig{{Col: "value", Func: "sum"}},
+		BatchSize:    10,
+		WorkersCount: 1,
+	}
+	input, output := newWorker(config)
+
+	msg, _ := ic.NewRowsBatch(
+		[]string{"category", "value"},
+		[][]interface{}{
+			{"A", 10},
+			{"B", 20},
+			{"A", 30},
+		},
+		0,
+	).Marshal()
+	input.SimulateMessage(msg)
+	input.SimulateMessage(msg)
+	input.SimulateMessage(endSignal)
+	output.waitForAMessage()
+	output.waitForAMessage()
+
+	if len(output.sentMessages) != 3 {
+		t.Fatalf("Expected 3 message sent, got %d", len(output.sentMessages))
+	}
+
+	println("Received messages:")
+	for _, m := range output.sentMessages {
+		fmt.Printf("%s\n", string(m))
+	}
+
+	var outputMsg ic.Message
+	err := json.Unmarshal(output.sentMessages[0], &outputMsg)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal output message: %v", err)
+	}
+
+	outputBatch, ok := outputMsg.Payload.(*ic.AggregatedDataPayload)
+	if !ok || outputBatch == nil {
+		t.Fatalf("Failed to cast payload to *ic.AggregatedDataPayload, got: %T", outputMsg.Payload)
+	}
+
+	expectedRows := map[string]float64{"A": 40.0, "B": 20.0}
+	if len(outputBatch.Rows) != len(expectedRows) {
+		t.Fatalf("Expected %d rows, got %d", len(expectedRows), len(outputBatch.Rows))
+	}
+
+	for _, row := range outputBatch.Rows {
+		category := row[0].(string)
+		sum := row[1].(float64)
+		expectedSum, exists := expectedRows[category]
+		if !exists {
+			t.Fatalf("Unexpected category %s in output", category)
+		}
+		if sum != expectedSum {
+			t.Fatalf("Expected sum for category %s to be %v, got %v", category, expectedSum, sum)
+		}
+		delete(expectedRows, category)
+	}
 }
 
 func TestTwoAggregatorWorkers(t *testing.T) {
@@ -294,7 +376,7 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 		switch p := outputMsg.Payload.(type) {
 		case *ic.EndSignalPayload:
 			endSignalCount++
-		case *ic.RowsBatchPayload:
+		case *ic.AggregatedDataPayload:
 			if len(p.Rows) != len(expectedRows) {
 				t.Errorf("Expected %d rows, got %d", len(expectedRows), len(p.Rows))
 			}
