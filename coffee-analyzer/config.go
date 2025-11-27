@@ -18,6 +18,7 @@ type Config struct {
 	LogLevel          string           `json:"log-level" mapstructure:"log-level"`
 	Queries           []rp.QueryOutput `json:"queries" mapstructure:"queries"`
 	TotalWorkers      int              `json:"total-workers" mapstructure:"total-workers"`
+	DuplicateProb     float64          `json:"duplicate-prob" mapstructure:"duplicate-prob"`
 }
 
 var requiredFields = []string{
@@ -29,6 +30,7 @@ var requiredFields = []string{
 // field: default value
 var optionalFields = map[string]interface{}{
 	"log-level": "INFO",
+	"duplicate-prob": 0.0,
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.
@@ -68,16 +70,21 @@ func InitConfig() (*Config, error) {
 		v.Set("queries", queries)
 	}
 
-	var config Config
-	if err := v.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("could not unmarshal config: %w", err)
-	}
-
 	// Set defaults for optional fields if not set
 	for optField, defaultValue := range optionalFields {
 		if !v.IsSet(optField) {
 			v.Set(optField, defaultValue)
 		}
+	}
+
+	var config Config
+	if err := v.Unmarshal(&config); err != nil {
+		return nil, fmt.Errorf("could not unmarshal config: %w", err)
+	}
+
+	// Validate duplicate-prob is within [0,1]
+	if config.DuplicateProb < 0.0 || config.DuplicateProb > 1.0 {
+		return nil, fmt.Errorf("config field duplicate-prob must be between 0 and 1, got %v", config.DuplicateProb)
 	}
 
 	return &config, nil
