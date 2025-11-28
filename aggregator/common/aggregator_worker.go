@@ -2,6 +2,7 @@ package common
 
 import (
 	"slices"
+	"sync"
 
 	roaring "github.com/RoaringBitmap/roaring/roaring64"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -9,6 +10,7 @@ import (
 )
 
 func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
+	sendDataOnce := sync.Once{}
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		// log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
@@ -37,7 +39,7 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 			done <- nil
 
 		case *ic.EndSignalPayload:
-			shouldAck := aw.aggregatorPassToNextStage(p)
+			shouldAck := aw.aggregatorPassToNextStage(p, &sendDataOnce)
 			if shouldAck {
 				done <- nil
 			} else {
@@ -52,15 +54,22 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 	}
 }
 
-func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload) bool {
-	retainedData := aw.dataRetainer.RetainData(
-		aw.Config.GroupBy,
-		aw.Config.Aggregations,
-		aw.reducedData,
-	)
-	aw.sendRetainedData(retainedData)
-	aw.sendProcessedBatches()
-	return aw.PropagateEndSignal(p)
+func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, sendDataOnce *sync.Once) bool {
+	if slices.Contains(p.WorkersDone, aw.Config.WorkerId) {
+		// This worker has already sent its end signal (duplicated message, ignore)
+		return false
+	}
+	sendDataOnce.Do(func() {
+		retainedData := aw.dataRetainer.RetainData(
+			aw.Config.GroupBy,
+			aw.Config.Aggregations,
+			aw.reducedData,
+		)
+		aw.sendRetainedData(retainedData)
+		aw.sendProcessedBatches()
+	})
+	aw.PropagateEndSignal(p)
+	return true
 }
 
 func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload) {
@@ -78,11 +87,7 @@ func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload) {
 	aw.processedBatches.Add(p.SeqNum)
 }
 
-func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) bool {
-	if slices.Contains(payload.WorkersDone, aw.Config.WorkerId) {
-		// This worker has already sent its end signal (duplicated message, ignore)
-		return false
-	}
+func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) {
 	log.Debugf("Worker %s done, propagating end signal", aw.Config.WorkerId)
 
 	payload.AddWorkerDone(aw.Config.WorkerId)
@@ -92,11 +97,10 @@ func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) boo
 		// endSignal, _ := ic.NewEndSignal(nil, payload.SeqNum).Marshal()
 		// aw.output.Send(endSignal)
 		aw.input.Delete()
-		return true
+		return
 	}
 
 	msg := ic.NewEndSignal(payload.WorkersDone, payload.SeqNum)
 	endSignal, _ := msg.Marshal()
 	aw.input.Send(endSignal) // re-enqueue the end signal with updated workers done
-	return true
 }

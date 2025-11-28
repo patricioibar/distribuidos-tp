@@ -5,6 +5,7 @@ import (
 	agf "aggregator/common/aggFunctions"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 
 	roaring "github.com/RoaringBitmap/roaring/roaring64"
@@ -42,17 +43,22 @@ func (s *StubProducer) Close() (error *mw.MessageMiddlewareError) { return nil }
 func (s *StubProducer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
 type StubConsumer struct {
-	onMessages []mw.OnMessageCallback
-	lastCalled int
-	started    chan struct{}
-	deleted    chan struct{}
+	onMessages     []mw.OnMessageCallback
+	onMessagesLock []sync.Mutex
+	lastCalled     int
+	started        chan struct{}
+	deletedChan    chan struct{}
+	deleted        bool
 }
 
 func newStubConsumer() *StubConsumer {
 	return &StubConsumer{
-		started:    make(chan struct{}, 10),
-		deleted:    make(chan struct{}),
-		lastCalled: 0,
+		started:        make(chan struct{}, 10),
+		deletedChan:    make(chan struct{}),
+		onMessages:     make([]mw.OnMessageCallback, 0),
+		onMessagesLock: make([]sync.Mutex, 0),
+		lastCalled:     0,
+		deleted:        false,
 	}
 }
 
@@ -63,22 +69,46 @@ func (s *StubConsumer) waitForStart() {
 func (s *StubConsumer) StartConsuming(onMessageCallback mw.OnMessageCallback) (error *mw.MessageMiddlewareError) {
 	println("StubConsumer started")
 	s.onMessages = append(s.onMessages, onMessageCallback)
+	s.onMessagesLock = append(s.onMessagesLock, sync.Mutex{})
 	s.started <- struct{}{}
-	<-s.deleted
+	<-s.deletedChan
 	return nil
 }
 
 func (s *StubConsumer) InjectMessage(message []byte, doneChan chan *mw.MessageMiddlewareError) {
+	if len(s.onMessages) == 0 {
+		return
+	}
+	// Pick a random callback using math/rand
+	// calling := rand.Intn(len(s.onMessages))
 	calling := s.lastCalled
 	s.lastCalled = (s.lastCalled + 1) % len(s.onMessages)
 	s.onMessages[calling](mw.MiddlewareMessage{Body: message}, doneChan)
 }
 
 func (s *StubConsumer) SimulateMessage(message []byte) {
-	println("Simulating message %v", string(message))
+	if s.deleted {
+		return
+	}
+	println("Simulating message: ", string(message))
 	doneChan := make(chan *mw.MessageMiddlewareError)
-	go func() { <-doneChan }()
-	s.InjectMessage(message, doneChan)
+	msgCopy := make([]byte, len(message))
+	copy(msgCopy, message)
+	go func() {
+		if err := <-doneChan; err != nil {
+			print("#")
+			// If the consumer was deleted in the meantime, don't requeue.
+			select {
+			case <-s.deletedChan:
+				// input deleted, drop the message
+				return
+			default:
+				s.SimulateMessage(msgCopy)
+			}
+		}
+	}()
+	// Inject a copy so the handler doesn't share the same underlying buffer when requeued
+	s.InjectMessage(msgCopy, doneChan)
 }
 
 func (s *StubConsumer) Send(message []byte) (error *mw.MessageMiddlewareError) {
@@ -90,7 +120,11 @@ func (s *StubConsumer) StopConsuming() (error *mw.MessageMiddlewareError) { retu
 
 func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
-func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { close(s.deleted); return nil }
+func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) {
+	close(s.deletedChan)
+	s.deleted = true
+	return nil
+}
 
 var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
@@ -411,5 +445,73 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 	}
 	if endSignalCount != 0 {
 		t.Errorf("Expected 0 end signal, got %d", endSignalCount)
+	}
+}
+func TestTwoAggregatorsDuplicateEndSignal(t *testing.T) {
+	numOfWorkers := 2
+	config := &common.Config{
+		GroupBy:      []string{"category"},
+		Aggregations: []agf.AggConfig{{Col: "value", Func: "sum"}},
+		BatchSize:    10,
+		WorkersCount: numOfWorkers,
+	}
+	input := newStubConsumer()
+	output := newStubProducer()
+	waitToEnd := make([]chan struct{}, numOfWorkers)
+	for i := 0; i < numOfWorkers; i++ {
+		configCopy := common.Config{
+			GroupBy:      config.GroupBy,
+			Aggregations: config.Aggregations,
+			BatchSize:    config.BatchSize,
+			WorkersCount: config.WorkersCount,
+			WorkerId:     fmt.Sprintf("worker-%d", i+1),
+			LogLevel:     "DEBUG",
+		}
+		waitToEnd[i] = make(chan struct{}, 1)
+		worker := common.NewAggregatorWorker(&configCopy, input, output, "", make(chan string, 1), 0)
+		go func(i int) {
+			worker.Start()
+			fmt.Printf("worker %d ended", i+1)
+			waitToEnd[i] <- struct{}{}
+		}(i)
+		input.waitForStart()
+	}
+
+	// Send duplicate end signals to ensure both workers handle them and exit cleanly
+	input.SimulateMessage(endSignal)
+	input.SimulateMessage(endSignal)
+
+	output.waitForAMessage()
+	output.waitForAMessage()
+
+	println("received two messages")
+
+	// Wait for both workers to end
+	for i := 0; i < numOfWorkers; i++ {
+		<-waitToEnd[i]
+	}
+	println("both workers ended")
+	if len(output.sentMessages) < numOfWorkers {
+		t.Fatalf("Expected at least %d messages (one per worker), got %d", numOfWorkers, len(output.sentMessages))
+	}
+
+	workersEnded := make(map[string]bool)
+	for _, msg := range output.sentMessages {
+		var outputMsg ic.Message
+		if err := json.Unmarshal(msg, &outputMsg); err != nil {
+			t.Fatalf("Failed to unmarshal output message: %v", err)
+		}
+		if outputMsg.Type != ic.MsgSequenceSet {
+			continue
+		}
+		payload, ok := outputMsg.Payload.(*ic.SequenceSetPayload)
+		if !ok {
+			t.Fatalf("Failed to cast payload to *ic.SequenceSetPayload, got: %T", outputMsg.Payload)
+		}
+		workersEnded[payload.WorkerID] = true
+	}
+
+	if len(workersEnded) != numOfWorkers {
+		t.Fatalf("Expected messages from %d workers, got %d", numOfWorkers, len(workersEnded))
 	}
 }
