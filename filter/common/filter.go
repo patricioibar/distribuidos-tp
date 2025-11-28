@@ -90,8 +90,13 @@ func (f *FilterWorker) getFilterFunction(filterType string) (mw.OnMessageCallbac
 			f.totallyFiltered.Or(p.Sequences.Bitmap)
 
 		case *ic.EndSignalPayload:
-			f.handleEndSignal(p)
-			done <- nil
+			shouldAck := f.handleEndSignal(p)
+			if shouldAck {
+				done <- nil
+			} else {
+				done <- &mw.MessageMiddlewareError{Code: 0, Msg: "end signal contains this worker already"}
+				// sleep?
+			}
 
 		default:
 			log.Errorf("Unexpected message type: %s", receivedMsg.Type)
@@ -170,10 +175,10 @@ func (f *FilterWorker) Close() {
 	})
 }
 
-func (f *FilterWorker) handleEndSignal(payload *ic.EndSignalPayload) {
+func (f *FilterWorker) handleEndSignal(payload *ic.EndSignalPayload) bool {
 	if slices.Contains(payload.WorkersDone, f.filterId) {
 		// This worker has already sent its end signal (duplicated message, ignore)
-		return
+		return false
 	}
 	log.Debugf("Worker received end signal. Task ended.")
 
@@ -198,10 +203,11 @@ func (f *FilterWorker) handleEndSignal(payload *ic.EndSignalPayload) {
 			log.Errorf("Failed to propagate end signal message: %v", err)
 		}
 		f.input.Delete()
-		return
+		return true
 	}
 
 	endBatch := ic.NewEndSignal(payload.WorkersDone, payload.SeqNum)
 	endSignal, _ := endBatch.Marshal()
 	f.input.Send(endSignal)
+	return true
 }
