@@ -142,37 +142,34 @@ func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageM
 
 		c.deliveries = deliveries
 
-		go func() {
-			defer close(c.done)
-			for {
-				select {
-				case d, ok := <-c.deliveries:
-					if !ok {
-						// canal cerrado por el server o por Cancel
-						return
-					}
-
-					ret := make(chan *MessageMiddlewareError, 1)
-					onMessageCallback(MiddlewareMessage{Body: d.Body, Headers: d.Headers}, ret)
-					err := <-ret
-					if err != nil {
-						_ = d.Nack(false, true) // requeue
-					} else {
-						_ = d.Ack(false)
-					}
-				case <-c.quit:
-					// señal de cierre desde StopConsuming
-					return
-				}
-			}
-		}()
 	})
 
 	if startErr != nil {
-		return &MessageMiddlewareError{Code: MessageMiddlewareMessageError, Msg: "Failed to start consuming: " + startErr.Error()}
+		return &MessageMiddlewareError{Code: MessageMiddlewareMessageError, Msg: "Failed consuming: " + startErr.Error()}
 	}
 
-	return nil
+	defer close(c.done)
+	for {
+		select {
+		case d, ok := <-c.deliveries:
+			if !ok {
+				// canal cerrado por el server o por Cancel
+				return nil
+			}
+
+			ret := make(chan *MessageMiddlewareError, 1)
+			onMessageCallback(MiddlewareMessage{Body: d.Body, Headers: d.Headers}, ret)
+			err := <-ret
+			if err != nil {
+				_ = d.Nack(false, true) // requeue
+			} else {
+				_ = d.Ack(false)
+			}
+		case <-c.quit:
+			// señal de cierre desde StopConsuming
+			return nil
+		}
+	}
 }
 
 func (c *Consumer) StopConsuming() *MessageMiddlewareError {

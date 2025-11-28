@@ -33,8 +33,10 @@ func TestProducerConsumerCommunication(t *testing.T) {
 	}
 
 	// Start consuming messages
-	errConsume := consumer.StartConsuming(callback)
-	assert.Nil(t, errConsume)
+	go func() {
+		errConsume := consumer.StartConsuming(callback)
+		assert.Nil(t, errConsume)
+	}()
 
 	// Send a test message
 	testMessage := "hello from producer"
@@ -80,10 +82,15 @@ func TestOneProducerTwoConsumersRoundRobin(t *testing.T) {
 		received2 <- string(msg.Body)
 		done <- nil
 	}
-	errConsume1 := consumer1.StartConsuming(callback1)
-	assert.Nil(t, errConsume1)
-	errConsume2 := consumer2.StartConsuming(callback2)
-	assert.Nil(t, errConsume2)
+
+	go func() {
+		errConsume1 := consumer1.StartConsuming(callback1)
+		assert.Nil(t, errConsume1)
+	}()
+	go func() {
+		errConsume2 := consumer2.StartConsuming(callback2)
+		assert.Nil(t, errConsume2)
+	}()
 
 	testMessage1 := "message 1"
 	errSend1 := producer.Send([]byte(testMessage1))
@@ -137,10 +144,15 @@ func TestOneProducerTwoConsumersClonedMessages(t *testing.T) {
 		received2 <- string(msg.Body)
 		done <- nil
 	}
-	errConsume1 := consumer1.StartConsuming(callback1)
-	assert.Nil(t, errConsume1)
-	errConsume2 := consumer2.StartConsuming(callback2)
-	assert.Nil(t, errConsume2)
+
+	go func() {
+		errConsume1 := consumer1.StartConsuming(callback1)
+		assert.Nil(t, errConsume1)
+	}()
+	go func() {
+		errConsume2 := consumer2.StartConsuming(callback2)
+		assert.Nil(t, errConsume2)
+	}()
 
 	testMessage := "hello to both consumers"
 	errSend := producer.Send([]byte(testMessage))
@@ -181,8 +193,11 @@ func TestTwoProducersOneConsumer(t *testing.T) {
 		received <- string(msg.Body)
 		done <- nil
 	}
-	errConsume := consumer.StartConsuming(callback)
-	assert.Nil(t, errConsume)
+
+	go func() {
+		errConsume := consumer.StartConsuming(callback)
+		assert.Nil(t, errConsume)
+	}()
 
 	testMessage1 := "message from producer 1"
 	errSend1 := producer1.Send([]byte(testMessage1))
