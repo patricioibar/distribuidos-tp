@@ -2,7 +2,6 @@ package filter
 
 import (
 	"encoding/json"
-	"sync"
 	"testing"
 	"time"
 
@@ -12,18 +11,22 @@ import (
 
 // Mock implementations for testing
 type MockMiddleware struct {
-	mu                sync.Mutex
-	messages          [][]byte
+	messages          chan []byte
 	onMessage         mw.OnMessageCallback
 	isConsuming       bool
 	shouldFailSend    bool
 	shouldFailConsume bool
+	deletedChan       chan struct{}
+}
+
+func NewMockMiddleware() *MockMiddleware {
+	return &MockMiddleware{
+		messages:    make(chan []byte, 100),
+		deletedChan: make(chan struct{}),
+	}
 }
 
 func (m *MockMiddleware) StartConsuming(callback mw.OnMessageCallback) *mw.MessageMiddlewareError {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if m.shouldFailConsume {
 		return &mw.MessageMiddlewareError{
 			Code: mw.MessageMiddlewareMessageError,
@@ -33,19 +36,16 @@ func (m *MockMiddleware) StartConsuming(callback mw.OnMessageCallback) *mw.Messa
 
 	m.onMessage = callback
 	m.isConsuming = true
+	<-m.deletedChan
 	return nil
 }
 
 func (m *MockMiddleware) StopConsuming() *mw.MessageMiddlewareError {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.isConsuming = false
 	return nil
 }
 
 func (m *MockMiddleware) Send(message []byte) *mw.MessageMiddlewareError {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if m.shouldFailSend {
 		return &mw.MessageMiddlewareError{
@@ -54,7 +54,7 @@ func (m *MockMiddleware) Send(message []byte) *mw.MessageMiddlewareError {
 		}
 	}
 
-	m.messages = append(m.messages, message)
+	m.messages <- message
 	return nil
 }
 
@@ -63,13 +63,12 @@ func (m *MockMiddleware) Close() *mw.MessageMiddlewareError {
 }
 
 func (m *MockMiddleware) Delete() *mw.MessageMiddlewareError {
+	close(m.deletedChan)
 	return nil
 }
 
-func (m *MockMiddleware) GetMessages() [][]byte {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.messages
+func (m *MockMiddleware) GetOneMessage() []byte {
+	return <-m.messages
 }
 
 func (m *MockMiddleware) SimulateMessage(data []byte) {
@@ -78,17 +77,17 @@ func (m *MockMiddleware) SimulateMessage(data []byte) {
 			Body: data,
 		}
 		done := make(chan *mw.MessageMiddlewareError, 1)
-		go m.onMessage(message, done)
+		m.onMessage(message, done)
 		<-done // wait for processing to complete
 	}
 }
 
 // Test for NewFilter with updated signature (workerID parameter)
 func TestNewFilter(t *testing.T) {
-	input := &MockMiddleware{}
-	output := &MockMiddleware{}
+	input := NewMockMiddleware()
+	output := NewMockMiddleware()
 
-	filter := NewFilter("test-worker-1", input, output, "TbyYear", 1)
+	filter := NewFilter("test-worker-1", input, output, "TbyYear", 1, nil, "job-123")
 
 	if filter == nil {
 		t.Errorf("expected filter instance but got nil")
@@ -133,7 +132,6 @@ func TestGetFilterFunction(t *testing.T) {
 			filterWorker := &FilterWorker{
 				filterId:     "test-worker",
 				workersCount: 1,
-				closeChan:    make(chan struct{}),
 			}
 
 			callback, err := filterWorker.getFilterFunction(tt.filterType)
@@ -156,11 +154,11 @@ func TestGetFilterFunction(t *testing.T) {
 
 // Test callback function behavior with end signals
 func TestFilterCallbackWithEndSignal(t *testing.T) {
-	input := &MockMiddleware{}
-	output := &MockMiddleware{}
+	input := NewMockMiddleware()
+	output := NewMockMiddleware()
 
 	// Create filter worker
-	filterWorker := NewFilter("test-worker", input, output, "TbyYear", 1)
+	filterWorker := NewFilter("test-worker", input, output, "TbyYear", 1, nil, "job-123")
 
 	callback, err := filterWorker.getFilterFunction("TbyYear")
 	if err != nil {
@@ -189,11 +187,11 @@ func TestFilterCallbackWithEndSignal(t *testing.T) {
 
 // Test end signal handling
 func TestEndSignalHandling(t *testing.T) {
-	input := &MockMiddleware{}
-	output := &MockMiddleware{}
+	input := NewMockMiddleware()
+	output := NewMockMiddleware()
 
 	// Create filter with workersCount = 1 (single worker scenario)
-	filter := NewFilter("worker-1", input, output, "TbyYear", 1)
+	filter := NewFilter("worker-1", input, output, "TbyYear", 1, nil, "job-123")
 	filter.workersCount = 1
 
 	// Start filter in background
@@ -214,13 +212,16 @@ func TestEndSignalHandling(t *testing.T) {
 	input.SimulateMessage(endData)
 
 	// Give time for processing
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// Should have one end signal message in output (since workersCount = 1)
-	messages := output.GetMessages()
-	if len(messages) != 1 {
-		t.Errorf("expected 1 end signal message, got %d", len(messages))
+	messageBytes := output.GetOneMessage()
+	var msg ic.Message
+	if err := msg.Unmarshal(messageBytes); err != nil {
+		t.Fatalf("failed to unmarshal output message: %v", err)
 	}
 
-	filter.Close()
+	if msg.Type != ic.MsgEndSignal {
+		t.Fatalf("expected payload to be of type []*ic.EndSignal")
+	}
 }

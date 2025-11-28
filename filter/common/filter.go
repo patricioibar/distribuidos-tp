@@ -2,7 +2,6 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 	"sync"
 
@@ -21,12 +20,21 @@ type FilterWorker struct {
 	output          mw.MessageMiddleware
 	filterFunction  mw.OnMessageCallback
 	totallyFiltered *roaring.Bitmap
-	closeChan       chan struct{}
-	closeOnce       sync.Once
-	StopOnce        sync.Once
+	seenBatches     *roaring.Bitmap
+	stopOnce        sync.Once
+	removeFromMap   chan string
+	jobId           string
 }
 
-func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMiddleware, filterType string, workersCount int) *FilterWorker {
+func NewFilter(
+	workerID string,
+	input mw.MessageMiddleware,
+	output mw.MessageMiddleware,
+	filterType string,
+	workersCount int,
+	removeFromMap chan string,
+	jobId string,
+) *FilterWorker {
 	fw := &FilterWorker{
 		filterId:        workerID,
 		workersCount:    workersCount,
@@ -34,7 +42,9 @@ func NewFilter(workerID string, input mw.MessageMiddleware, output mw.MessageMid
 		output:          output,
 		filterFunction:  nil,
 		totallyFiltered: roaring.New(),
-		closeChan:       make(chan struct{}),
+		seenBatches:     roaring.New(),
+		removeFromMap:   removeFromMap,
+		jobId:           jobId,
 	}
 
 	filterFunction, err := fw.getFilterFunction(filterType)
@@ -73,29 +83,7 @@ func (f *FilterWorker) getFilterFunction(filterType string) (mw.OnMessageCallbac
 
 		switch p := receivedMsg.Payload.(type) {
 		case *ic.RowsBatchPayload:
-
-			if len(p.Rows) != 0 {
-				filteredBatch, err := filterFunction(p)
-				if err == nil {
-					filteredBatchPayload := filteredBatch.Payload.(*ic.RowsBatchPayload)
-					log.Debugf("Filter %s processed batch: %d input rows -> %d output rows", f.filterId, len(p.Rows), len(filteredBatchPayload.Rows))
-
-					if len(filteredBatchPayload.Rows) > 0 {
-						batchBytes, err := filteredBatch.Marshal()
-						if err != nil {
-							log.Errorf("Failed to marshal batch: %v", err)
-						}
-						if err := f.output.Send(batchBytes); err != nil {
-							log.Errorf("Failed to send message: %v", err)
-						}
-
-					} else {
-						log.Debugf("Filter %s: No rows passed the filter criteria", f.filterId)
-						f.totallyFiltered.Add(p.SeqNum)
-					}
-				}
-			}
-
+			f.filterBatch(p, filterFunction)
 			done <- nil
 
 		case *ic.SequenceSetPayload:
@@ -104,31 +92,61 @@ func (f *FilterWorker) getFilterFunction(filterType string) (mw.OnMessageCallbac
 		case *ic.EndSignalPayload:
 			f.handleEndSignal(p)
 			done <- nil
-			f.closeOnce.Do(func() { close(f.closeChan) })
 
 		default:
-			fmt.Println("Tipo de payload desconocido")
+			log.Errorf("Unexpected message type: %s", receivedMsg.Type)
 			done <- nil
 		}
 
 	}, nil
 }
 
+func (f *FilterWorker) filterBatch(p *ic.RowsBatchPayload, filterFunction func(*ic.RowsBatchPayload) (*ic.Message, error)) {
+	if f.seenBatches.Contains(p.SeqNum) {
+		log.Debugf("Batch %d already processed, skipping.", p.SeqNum)
+		return
+	}
+
+	f.seenBatches.Add(p.SeqNum)
+	if len(p.Rows) == 0 {
+		return
+	}
+	filteredBatch, err := filterFunction(p)
+	if err != nil {
+		log.Errorf("Failed to filter batch: %v", err)
+		return
+	}
+	filteredBatchPayload := filteredBatch.Payload.(*ic.RowsBatchPayload)
+	log.Debugf("Filter %s processed batch: %d input rows -> %d output rows", f.filterId, len(p.Rows), len(filteredBatchPayload.Rows))
+
+	if len(filteredBatchPayload.Rows) > 0 {
+		batchBytes, err := filteredBatch.Marshal()
+		if err != nil {
+			log.Errorf("Failed to marshal batch: %v", err)
+		}
+		if err := f.output.Send(batchBytes); err != nil {
+			log.Errorf("Failed to send message: %v", err)
+		}
+
+	} else {
+		log.Debugf("Filter %s: No rows passed the filter criteria", f.filterId)
+		f.totallyFiltered.Add(p.SeqNum)
+	}
+}
+
 func (f *FilterWorker) Start() {
+	// blocks until all workers are done
 	if err := f.input.StartConsuming(f.filterFunction); err != nil {
-		// f.Close()
 		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
 
-	<-f.closeChan
 	f.Close()
 }
 
 func (f *FilterWorker) Close() {
-	log.Info("FilterWorker shutdown initiated...")
-
-	// Stop consuming new messages from input
-	f.StopOnce.Do(func() {
+	f.stopOnce.Do(func() {
+		// Close input
+		log.Info("FilterWorker shutdown initiated...")
 		if f.input != nil {
 			if err := f.input.Close(); err != nil {
 				log.Errorf("Failed to stop input consuming: %v", err)
@@ -145,7 +163,8 @@ func (f *FilterWorker) Close() {
 				log.Debug("Output producer stopped.")
 			}
 		}
-		f.closeOnce.Do(func() { close(f.closeChan) })
+
+		f.removeFromMap <- f.jobId
 
 		log.Info("FilterWorker shutdown completed.")
 	})
@@ -164,17 +183,21 @@ func (f *FilterWorker) handleEndSignal(payload *ic.EndSignalPayload) {
 		if err := f.output.Send(batchBytes); err != nil {
 			log.Errorf("Failed to send message: %v", err)
 		}
+		// cleaning totallyFiltered so it doesnt send
+		// duplicated messages to next stage
+		f.totallyFiltered = roaring.New()
 	}
 
 	payload.AddWorkerDone(f.filterId)
 
 	if len(payload.WorkersDone) == f.workersCount {
-		log.Info("All workers done. Sending end signal to next stage.")
+		log.Info("All workers done. Sending end signal to next stage and deleting input.")
 		endSignal := ic.NewEndSignal(nil, payload.SeqNum)
 		batchBytes, _ := endSignal.Marshal()
 		if err := f.output.Send(batchBytes); err != nil {
 			log.Errorf("Failed to propagate end signal message: %v", err)
 		}
+		f.input.Delete()
 		return
 	}
 
