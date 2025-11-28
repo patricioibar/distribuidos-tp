@@ -5,6 +5,10 @@ import (
 	"io"
 )
 
+func init() {
+	RegisterOperation(DeltaTypeID, decodeDelta)
+}
+
 // Operation represents a state change operation
 //
 // It must be able to encode/decode itself to/from bytes for logging purposes
@@ -19,6 +23,10 @@ type Operation interface {
 	ApplyTo(State) error
 }
 
+// OperationDecoder is a function that decodes an operation from a byte slice
+// It is used to register decoders for different operation types
+// the byte slice passed to the decoder includes the TypeID as the first byte.
+// then inlcudes the rest of the encoded operation data.
 type OperationDecoder func([]byte) (Operation, error)
 
 var operationRegistry = map[byte]OperationDecoder{}
@@ -172,7 +180,7 @@ func (sm *StateManager) decodeOperation(entry []byte) (Operation, error) {
 	if !exists {
 		return nil, fmt.Errorf("unknown operation type ID: %d", typeID)
 	}
-	op, err := decoder(entry[1:])
+	op, err := decoder(entry)
 	if err != nil {
 		return nil, err
 	}
