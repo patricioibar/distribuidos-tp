@@ -78,16 +78,19 @@ func (rp *ResponseParser) callbackForQuery(i int) mw.OnMessageCallback {
 func (rp *ResponseParser) Start(s *c.Socket) {
 	rp.socket = s
 	for _, sink := range rp.querySinks {
-		sink.consumer.StartConsuming(sink.callback)
+		go func(sink QuerySink) {
+			if err := sink.consumer.StartConsuming(sink.callback); err != nil {
+				log.Errorf("Failed to start consuming messages for sink %s: %v", sink.cfg.SinkName, err)
+			}
+		}(sink)
 	}
-	for _, done := range rp.queryDone {
+	for i, done := range rp.queryDone {
 		<-done
+		rp.querySinks[i].consumer.Delete()
+		rp.querySinks[i].consumer.Close()
 	}
 	log.Infof("[%s] All queries done, closing response parser", rp.jobID)
 	s.Close()
-	for _, sink := range rp.querySinks {
-		sink.consumer.Close()
-	}
 }
 
 func genericRowsToStringRows(rows [][]interface{}) [][]string {

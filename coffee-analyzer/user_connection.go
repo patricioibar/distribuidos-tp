@@ -154,7 +154,10 @@ func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	defer consumer.Close()
+	defer func() {
+		consumer.Close()
+		consumer.Delete()
+	}()
 
 	ready := make(chan bool, 1)
 	readyCount := 0
@@ -165,13 +168,16 @@ func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
 		}
 		done <- nil
 	}
-	consumer.StartConsuming(callback)
+
+	go func() {
+		if err := consumer.StartConsuming(callback); err != nil {
+			log.Errorf("Failed to consume workers ready notification for job %v: %v", id, err)
+		}
+	}()
 
 	bytes, _ := id.MarshalBinary()
-	er := ca.jobPublisher.Send(bytes)
-	if er != nil {
-		consumer.Close()
-		return er
+	if err := ca.jobPublisher.Send(bytes); err != nil {
+		return err
 	}
 	<-ready
 	log.Infof("All workers ready for new job %v", id)
