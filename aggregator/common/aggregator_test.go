@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -398,7 +398,7 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 
 	expectedRows := map[string][]interface{}{"A": {2, 40.0}, "B": {1, 20.0}}
 	endSignalCount := 0
-	ackedSeqs := roaring.NewBitmap()
+	ackedSeqs := bitmap.NewBitmap()
 	for _, msg := range output.sentMessages {
 		var outputMsg ic.Message
 		err := json.Unmarshal([]byte(msg), &outputMsg)

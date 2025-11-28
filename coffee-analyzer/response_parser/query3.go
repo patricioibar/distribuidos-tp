@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"strings"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
 
 func (rp *ResponseParser) parseQuery3Response() mw.OnMessageCallback {
-	seenBatches := roaring.New()
+	seenBatches := bitmap.New()
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		defer func() { done <- nil }()
 		jsonStr := string(msg.Body)

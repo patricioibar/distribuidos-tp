@@ -5,7 +5,7 @@ import (
 	"joiner/common"
 	"testing"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -515,7 +515,7 @@ func TestMultipleJoiners(t *testing.T) {
 	}
 
 	endSignalCount := 0
-	ackedSequences := roaring.New()
+	ackedSequences := bitmap.New()
 	for i := 0; i < len(output.sentMessages); i++ {
 		var msg ic.Message
 		err := msg.Unmarshal(output.sentMessages[i])

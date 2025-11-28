@@ -5,8 +5,8 @@ import (
 	"slices"
 	"sync"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/op/go-logging"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -19,8 +19,8 @@ type FilterWorker struct {
 	input           mw.MessageMiddleware
 	output          mw.MessageMiddleware
 	filterFunction  mw.OnMessageCallback
-	totallyFiltered *roaring.Bitmap
-	seenBatches     *roaring.Bitmap
+	totallyFiltered *bitmap.Bitmap
+	seenBatches     *bitmap.Bitmap
 	stopOnce        sync.Once
 	removeFromMap   chan string
 	jobId           string
@@ -41,8 +41,8 @@ func NewFilter(
 		input:           input,
 		output:          output,
 		filterFunction:  nil,
-		totallyFiltered: roaring.New(),
-		seenBatches:     roaring.New(),
+		totallyFiltered: bitmap.New(),
+		seenBatches:     bitmap.New(),
 		removeFromMap:   removeFromMap,
 		jobId:           jobId,
 	}
@@ -190,7 +190,7 @@ func (f *FilterWorker) handleEndSignal(payload *ic.EndSignalPayload) bool {
 		}
 		// cleaning totallyFiltered so it doesnt send
 		// duplicated messages to next stage
-		f.totallyFiltered = roaring.New()
+		f.totallyFiltered = bitmap.New()
 	}
 
 	payload.AddWorkerDone(f.filterId)

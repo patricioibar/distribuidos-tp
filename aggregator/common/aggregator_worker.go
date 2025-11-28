@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sync"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -27,7 +27,7 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 			done <- nil
 
 		case *ic.SequenceSetPayload:
-			intersection := roaring.And(aw.processedBatches, p.Sequences.Bitmap)
+			intersection := bitmap.And(aw.processedBatches, p.Sequences.Bitmap)
 			if intersection.GetCardinality() != 0 {
 				log.Warningf(
 					"%s received duplicated data for job %s! Received %d duplicated sequence numbers: %s",
