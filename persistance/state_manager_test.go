@@ -67,11 +67,11 @@ func (op *testOperation) ApplyTo(st State) error {
 }
 
 func decodeTestOperation(data []byte) (Operation, error) {
-	if len(data) < 16 {
+	if len(data) < 17 {
 		return nil, fmt.Errorf("test operation payload too short: %d", len(data))
 	}
-	seq := binary.LittleEndian.Uint64(data[:8])
-	delta := int64(binary.LittleEndian.Uint64(data[8:16]))
+	seq := binary.LittleEndian.Uint64(data[1:9])
+	delta := int64(binary.LittleEndian.Uint64(data[9:17]))
 	return &testOperation{seq: seq, delta: delta}, nil
 }
 
