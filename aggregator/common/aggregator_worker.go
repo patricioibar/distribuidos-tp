@@ -21,8 +21,7 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 
 		switch p := receivedMessage.Payload.(type) {
 		case *ic.RowsBatchPayload:
-			aw.aggregateNewRowsBatch(p, done)
-
+			aw.aggregateNewRowsBatch(p)
 			done <- nil
 
 		case *ic.SequenceSetPayload:
@@ -38,9 +37,13 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 			done <- nil
 
 		case *ic.EndSignalPayload:
-			aw.aggregatorPassToNextStage(p)
-			done <- nil
-			close(aw.closeChan)
+			shouldAck := aw.aggregatorPassToNextStage(p)
+			if shouldAck {
+				done <- nil
+			} else {
+				// duplicated end signal, requeue
+				done <- &mw.MessageMiddlewareError{Code: 0, Msg: "end signal contains this worker already"}
+			}
 
 		default:
 			log.Errorf("Unexpected message type: %s", receivedMessage.Type)
@@ -49,7 +52,7 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 	}
 }
 
-func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload) {
+func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload) bool {
 	retainedData := aw.dataRetainer.RetainData(
 		aw.Config.GroupBy,
 		aw.Config.Aggregations,
@@ -57,16 +60,15 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload) {
 	)
 	aw.sendRetainedData(retainedData)
 	aw.sendProcessedBatches()
-	aw.PropagateEndSignal(p)
+	return aw.PropagateEndSignal(p)
 }
 
-func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload, done chan *mw.MessageMiddlewareError) {
+func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload) {
 	if aw.processedBatches.Contains(p.SeqNum) {
 		log.Warningf(
 			"%s received duplicated data for job %s! Sequence number: %d. Ignoring batch.",
 			aw.Config.WorkerId, aw.jobID, p.SeqNum,
 		)
-		done <- nil
 		return
 	}
 
@@ -76,23 +78,25 @@ func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload, done c
 	aw.processedBatches.Add(p.SeqNum)
 }
 
-func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) {
+func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) bool {
 	if slices.Contains(payload.WorkersDone, aw.Config.WorkerId) {
 		// This worker has already sent its end signal (duplicated message, ignore)
-		return
+		return false
 	}
 	log.Debugf("Worker %s done, propagating end signal", aw.Config.WorkerId)
 
 	payload.AddWorkerDone(aw.Config.WorkerId)
 
 	if len(payload.WorkersDone) == aw.Config.WorkersCount {
-		log.Debugf("All workers done")
+		log.Debugf("All workers done. Deleting input queue.")
 		// endSignal, _ := ic.NewEndSignal(nil, payload.SeqNum).Marshal()
 		// aw.output.Send(endSignal)
-		return
+		aw.input.Delete()
+		return true
 	}
 
 	msg := ic.NewEndSignal(payload.WorkersDone, payload.SeqNum)
 	endSignal, _ := msg.Marshal()
 	aw.input.Send(endSignal) // re-enqueue the end signal with updated workers done
+	return true
 }

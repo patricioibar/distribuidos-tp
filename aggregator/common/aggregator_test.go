@@ -45,11 +45,13 @@ type StubConsumer struct {
 	onMessages []mw.OnMessageCallback
 	lastCalled int
 	started    chan struct{}
+	deleted    chan struct{}
 }
 
 func newStubConsumer() *StubConsumer {
 	return &StubConsumer{
 		started:    make(chan struct{}, 10),
+		deleted:    make(chan struct{}),
 		lastCalled: 0,
 	}
 }
@@ -62,6 +64,7 @@ func (s *StubConsumer) StartConsuming(onMessageCallback mw.OnMessageCallback) (e
 	println("StubConsumer started")
 	s.onMessages = append(s.onMessages, onMessageCallback)
 	s.started <- struct{}{}
+	<-s.deleted
 	return nil
 }
 
@@ -87,7 +90,7 @@ func (s *StubConsumer) StopConsuming() (error *mw.MessageMiddlewareError) { retu
 
 func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
-func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
+func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { close(s.deleted); return nil }
 
 var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
@@ -125,8 +128,8 @@ func TestSumAggregatorWorker(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 
-	if len(output.sentMessages) != 3 {
-		t.Fatalf("Expected 3 message sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 2 {
+		t.Fatalf("Expected 2 message sent, got %d", len(output.sentMessages))
 	}
 
 	println("Received messages:")
@@ -197,8 +200,8 @@ func TestCountAggregatorWorker(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 
-	if len(output.sentMessages) != 3 {
-		t.Fatalf("Expected 3 message sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 2 {
+		t.Fatalf("Expected 2 message sent, got %d", len(output.sentMessages))
 	}
 	println("Received messages:")
 	for _, m := range output.sentMessages {
@@ -288,8 +291,8 @@ func TestSumDuplicatedMessageAggregatorWorker(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 
-	if len(output.sentMessages) != 3 {
-		t.Fatalf("Expected 3 message sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 2 {
+		t.Fatalf("Expected 2 message sent, got %d", len(output.sentMessages))
 	}
 
 	println("Received messages:")
@@ -350,8 +353,8 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 
-	if len(output.sentMessages) != 4 {
-		t.Errorf("Expected 4 message sent, got %d:", len(output.sentMessages))
+	if len(output.sentMessages) != 3 {
+		t.Errorf("Expected 3 message sent, got %d:", len(output.sentMessages))
 		for _, m := range output.sentMessages {
 			t.Errorf("%s\n", string(m))
 		}
@@ -366,11 +369,11 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 	expectedRows := map[string][]interface{}{"A": {2, 40.0}, "B": {1, 20.0}}
 	endSignalCount := 0
 	ackedSeqs := roaring.NewBitmap()
-	for _, msg := range output.sentMessages[:4] {
+	for _, msg := range output.sentMessages {
 		var outputMsg ic.Message
 		err := json.Unmarshal([]byte(msg), &outputMsg)
 		if err != nil {
-			t.Fatalf("Failed to unmarshal output message: %v", err)
+			t.Fatalf("Failed to unmarshal output message %s: %v", string(msg), err)
 		}
 
 		switch p := outputMsg.Payload.(type) {
@@ -406,7 +409,7 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 	if ackedSeqs.GetCardinality() != 1 {
 		t.Errorf("Expected 1 acked sequence number, got %d", ackedSeqs.GetCardinality())
 	}
-	if endSignalCount != 1 {
-		t.Errorf("Expected 1 end signal, got %d", endSignalCount)
+	if endSignalCount != 0 {
+		t.Errorf("Expected 0 end signal, got %d", endSignalCount)
 	}
 }

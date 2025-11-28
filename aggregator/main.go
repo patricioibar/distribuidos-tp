@@ -61,9 +61,13 @@ func main() {
 	}
 	removeFromMap := make(chan string, 10)
 	callback := initializeAggregatorJob(config, jobsMap, &jobsMapLock, removeFromMap)
-	if err := incomingJobs.StartConsuming(callback); err != nil {
-		log.Fatalf("Failed to start consuming messages: %v", err)
-	}
+
+	go func() {
+		if err := incomingJobs.StartConsuming(callback); err != nil {
+			log.Fatalf("Failed to start consuming messages: %v", err)
+		}
+		log.Warningf("Incoming jobs queue closed! Stopped receiving new jobs")
+	}()
 
 	go removeDoneJobs(jobsMap, &jobsMapLock, removeFromMap)
 

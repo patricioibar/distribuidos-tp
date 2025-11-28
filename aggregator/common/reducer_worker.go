@@ -35,10 +35,6 @@ func (aw *AggregatorWorker) reducerMessageCallback() mw.OnMessageCallback {
 
 			done <- nil
 
-			if len(aw.aggregatorsDone) == aw.Config.WorkersCount {
-				close(aw.closeChan)
-			}
-
 		default:
 			log.Errorf("Unexpected message type: %s", receivedMessage.Type)
 			done <- nil
@@ -47,19 +43,22 @@ func (aw *AggregatorWorker) reducerMessageCallback() mw.OnMessageCallback {
 }
 
 func (aw *AggregatorWorker) reducerPassToNextStage() {
-	aw.sendProcessedBatches()
 	retainedData := aw.dataRetainer.RetainData(
 		aw.Config.GroupBy,
 		aw.Config.Aggregations,
 		aw.reducedData,
 	)
-	nextSeq := aw.sendRetainedData(retainedData)
-	aw.processedBatches.RemoveRange(0, nextSeq)
+	aw.sendRetainedData(retainedData)
+
+	// to be consistent with other workers, remove all processed batches up to nextSeq
+	// and notify those batches have been processed
+	aw.processedBatches.RemoveRange(0, aw.nextBatchToSend)
 	aw.sendProcessedBatches()
-	eofMsg, _ := ic.NewEndSignal([]string{}, aw.processedBatches.Maximum()+1).Marshal()
+	eofMsg, _ := ic.NewEndSignal([]string{}, aw.nextBatchToSend).Marshal()
 	if err := aw.output.Send(eofMsg); err != nil {
 		log.Errorf("Failed to send end signal message: %v", err)
 	}
+	aw.input.Delete()
 }
 
 func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceSetPayload) {

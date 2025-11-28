@@ -25,14 +25,13 @@ type AggregatorWorker struct {
 	reducedData      map[string][]a.Aggregation
 	dataRetainer     dr.DataRetainer
 	processedBatches *roaring.Bitmap
-	nextBatchSeq     uint64
+	nextBatchToSend  uint64
 
 	// Reducer specific fields
 	rcvedAggData    map[string]*roaring.Bitmap
 	aggregatorsDone []string
 
 	// Closing synchronization
-	closeChan     chan struct{}
 	removeFromMap chan string
 	closeOnce     sync.Once
 }
@@ -53,13 +52,12 @@ func NewAggregatorWorker(
 		reducedData:      reducedData,
 		dataRetainer:     dr.NewDataRetainer(config.Retainings),
 		processedBatches: roaring.New(),
-		closeChan:        make(chan struct{}),
 		removeFromMap:    removeFromMap,
 		jobID:            jobID,
 		closeOnce:        sync.Once{},
 		rcvedAggData:     nil,
 		aggregatorsDone:  nil,
-		nextBatchSeq:     nextBatchSeq,
+		nextBatchToSend:  nextBatchSeq,
 	}
 
 	if config.IsReducer {
@@ -74,12 +72,11 @@ func NewAggregatorWorker(
 }
 
 func (aw *AggregatorWorker) Start() {
+	// blocks until queue is deleted or closed
 	if err := aw.input.StartConsuming(aw.callback); err != nil {
-		aw.Close()
 		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
 
-	<-aw.closeChan
 	aw.Close()
 }
 
@@ -107,9 +104,16 @@ func (aw *AggregatorWorker) sendProcessedBatches() {
 	if err := aw.output.Send(seqSetBytes); err != nil {
 		log.Errorf("Failed to send processed batches message: %v", err)
 	}
+	// roaring.Bitmap.Maximum() panics if the bitmap is empty. Guard against
+	// that case and set nextBatchToSend to 0 when no processed batches exist.
+	if aw.processedBatches.GetCardinality() == 0 {
+		aw.nextBatchToSend = 0
+	} else {
+		aw.nextBatchToSend = aw.processedBatches.Maximum() + 1
+	}
 }
 
-func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData) uint64 {
+func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData) {
 	log.Debugf("Worker %s sending retained data, different formats: %d", aw.Config.WorkerId, len(differentFormats))
 	uniqueKeyColumns := make(map[string]struct{})
 	uniqueAggregations := make(map[string]struct{})
@@ -156,8 +160,9 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 		i := 0
 		for _, row := range dataInfo.Data {
 			if i >= batchSize {
-				if seq >= aw.nextBatchSeq {
+				if seq >= aw.nextBatchToSend {
 					aw.sendAggregatedDataBatch(dataBatch, seq)
+					aw.nextBatchToSend++
 				}
 
 				seq++
@@ -191,10 +196,9 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 
 		if len(dataBatch.Data) > 0 {
 			aw.sendAggregatedDataBatch(dataBatch, seq)
-
+			aw.nextBatchToSend++
 		}
 	}
-	return seq + 1
 }
 
 func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload) {
@@ -259,6 +263,7 @@ func (aw *AggregatorWorker) sendAggregatedDataBatch(data dr.RetainedData, seq ui
 	batchBytes, err := msg.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal batch: %v", err)
+		return
 	}
 
 	// log.Debugf("Sending data batch: %v", string(batchBytes))
