@@ -1,0 +1,167 @@
+package persistance
+
+import "fmt"
+
+// Operation represents a state change operation
+//
+// It must be able to encode/decode itself to/from bytes for logging purposes
+// and apply itself to a State.
+//
+// The Encode method should produce a byte slice that starts with the TypeID byte,
+// followed by the encoded data specific to the operation.
+type Operation interface {
+	TypeID() byte
+	SeqNumber() uint64
+	Encode() ([]byte, error)
+	ApplyTo(State) error
+}
+
+type OperationDecoder func([]byte) (Operation, error)
+
+var operationRegistry = map[byte]OperationDecoder{}
+
+func RegisterOperation(typeID byte, decoder OperationDecoder) {
+	operationRegistry[typeID] = decoder
+}
+
+type State interface {
+	Apply([]byte) error
+
+	Serialize() ([]byte, error)
+
+	Deserialize([]byte) error
+}
+
+type StateManager struct {
+	state             State
+	stateLog          StateLog
+	logsSinceSnapshot int
+	snapshotPeriod    int
+}
+
+func NewStateManager(state State, stateLog StateLog, snapshotPeriod int) (*StateManager, error) {
+	sm := &StateManager{
+		state:             state,
+		stateLog:          stateLog,
+		logsSinceSnapshot: 0,
+	}
+
+	snapshotData, err := sm.state.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	sm.stateLog.WriteSnapshot(snapshotData)
+	return sm, nil
+}
+
+// Applies an operation to the current internal state of the logger(used to persist state changes and take snapshots) and logs it
+func (sm *StateManager) log(op Operation) error {
+	entry, err := op.Encode()
+	if err != nil {
+		return err
+	}
+	err = sm.stateLog.Append(entry)
+	if err != nil {
+		return err
+	}
+	err = op.ApplyTo(sm.state)
+	if err != nil {
+		return err
+	}
+	sm.logsSinceSnapshot++
+	if sm.logsSinceSnapshot >= sm.snapshotPeriod {
+		snapshotData, err := sm.state.Serialize()
+		if err != nil {
+			return err
+		}
+		_, err = sm.stateLog.WriteSnapshot(snapshotData)
+		if err != nil {
+			return err
+		}
+		sm.logsSinceSnapshot = 0
+		err = sm.stateLog.RotateWAL()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (sm *StateManager) Close() error {
+	return sm.stateLog.Close()
+}
+
+func (sm *StateManager) GetState() State {
+	return sm.state
+}
+
+func (sm *StateManager) Restore() error {
+	snapshotData, walIt, err := sm.stateLog.Restore()
+	if err != nil {
+		return err
+	}
+
+	if snapshotData != nil {
+		err = sm.state.Deserialize(snapshotData)
+		if err != nil {
+			return err
+		}
+	}
+
+	for {
+		entry, err := walIt.Next()
+		if err != nil {
+			return err
+		}
+		if entry == nil {
+			break
+		}
+		err = sm.state.Apply(entry)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (sm *StateManager) getOperationWithSeqNumber(seqNumber uint64) (Operation, error) {
+	_, walIt, err := sm.stateLog.Restore()
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		entry, err := walIt.Next()
+		if err != nil {
+			return nil, err
+		}
+		if entry == nil {
+			break
+		}
+		op, err := sm.decodeOperation(entry)
+		if err != nil {
+			return nil, err
+		}
+		if op.SeqNumber() == seqNumber {
+			return op, nil
+		}
+	}
+	return nil, nil
+}
+
+func (sm *StateManager) decodeOperation(entry []byte) (Operation, error) {
+	if len(entry) == 0 {
+		return nil, fmt.Errorf("empty entry")
+	}
+	typeID := entry[0]
+	decoder, exists := operationRegistry[typeID]
+	if !exists {
+		return nil, fmt.Errorf("unknown operation type ID: %d", typeID)
+	}
+	op, err := decoder(entry[1:])
+	if err != nil {
+		return nil, err
+	}
+	return op, nil
+}
