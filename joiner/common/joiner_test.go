@@ -43,11 +43,13 @@ type StubConsumer struct {
 	onMessages []mw.OnMessageCallback
 	lastCalled int
 	started    chan struct{}
+	deleted    chan struct{}
 }
 
 func newStubConsumer() *StubConsumer {
 	return &StubConsumer{
 		started:    make(chan struct{}, 10),
+		deleted:    make(chan struct{}),
 		lastCalled: 0,
 	}
 }
@@ -62,6 +64,7 @@ func (s *StubConsumer) StartConsuming(
 	println("StubConsumer started")
 	s.onMessages = append(s.onMessages, onMessageCallback)
 	s.started <- struct{}{}
+	<-s.deleted
 	return nil
 }
 
@@ -75,10 +78,10 @@ func (s *StubConsumer) InjectMessage(
 }
 
 func (s *StubConsumer) SimulateMessage(message []byte) {
-	println("Simulating message %v", string(message))
-	doneChan := make(chan *mw.MessageMiddlewareError)
-	go func() { <-doneChan }()
+	println("Simulating message: ", string(message))
+	doneChan := make(chan *mw.MessageMiddlewareError, 1)
 	s.InjectMessage(message, doneChan)
+	<-doneChan
 }
 
 func (s *StubConsumer) Send(message []byte) (error *mw.MessageMiddlewareError) {
@@ -90,7 +93,7 @@ func (s *StubConsumer) StopConsuming() (error *mw.MessageMiddlewareError) { retu
 
 func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
-func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
+func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { close(s.deleted); return nil }
 
 var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
@@ -136,7 +139,7 @@ func TestJoinMultipleRows(t *testing.T) {
 	rightInput := newStubConsumer()
 	output := newStubProducer()
 
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "test1", nil)
 
 	go func() { joiner.Start() }()
 
@@ -150,10 +153,9 @@ func TestJoinMultipleRows(t *testing.T) {
 
 	output.waitForAMessage()
 	output.waitForAMessage()
-	output.waitForAMessage()
 
-	if len(output.sentMessages) != 3 {
-		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 2 {
+		t.Fatalf("Expected 2 messages sent, got %d", len(output.sentMessages))
 	}
 
 	joinedBatch, err := rowsBatchFromString(string(output.sentMessages[0]))
@@ -180,16 +182,8 @@ func TestJoinMultipleRows(t *testing.T) {
 		}
 	}
 
-	middleMessage, err := sequenceSetFromString(string(output.sentMessages[1]))
-	if err != nil {
-		t.Fatalf("Failed to unmarshal output message: %s", err)
-	}
-	if middleMessage.Sequences.GetCardinality() != 1 {
-		t.Fatalf("Expected cardinality 1 in sequence set, got %d", middleMessage.Sequences.GetCardinality())
-	}
-
 	var lastMsg ic.Message
-	err = lastMsg.Unmarshal(output.sentMessages[2])
+	err = lastMsg.Unmarshal(output.sentMessages[1])
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %s", err)
 	}
@@ -303,12 +297,16 @@ func TestJoinMultipleBatches(t *testing.T) {
 		{"Charlie", 3},
 		{"Diana", 4},
 	}
+	leftRows3 := [][]interface{}{
+		{"Rudolph", 33},
+	}
 	rightColumns := []string{"id", "department", "trassh"}
 	rightRows := [][]interface{}{
 		{1, "HR", "Trash"},
 		{2, "Engineering", "Trash"},
 		{3, "Marketing", "Trash"},
 		{4, "Finance", "Trash"},
+		{5, "Sales", "Trash"},
 	}
 
 	config := &common.Config{
@@ -316,7 +314,6 @@ func TestJoinMultipleBatches(t *testing.T) {
 		WorkersCount:  1,
 		JoinKey:       "id",
 		OutputColumns: []string{"name", "department"},
-		BatchSize:     2,
 	}
 
 	expectedJoinedRows := map[string]string{
@@ -328,10 +325,12 @@ func TestJoinMultipleBatches(t *testing.T) {
 
 	leftBatch1 := ic.NewRowsBatch(leftColumns, leftRows1, 0)
 	leftBatch2 := ic.NewRowsBatch(leftColumns, leftRows2, 1)
+	leftBatch3 := ic.NewRowsBatch(leftColumns, leftRows3, 2)
 	rightBatch := ic.NewRowsBatch(rightColumns, rightRows, 0)
 
 	leftBatchBytes1, _ := leftBatch1.Marshal()
 	leftBatchBytes2, _ := leftBatch2.Marshal()
+	leftBatchBytes3, _ := leftBatch3.Marshal()
 	rightBatchBytes, _ := rightBatch.Marshal()
 
 	leftInput := newStubConsumer()
@@ -349,6 +348,7 @@ func TestJoinMultipleBatches(t *testing.T) {
 	leftInput.waitForStart()
 	leftInput.SimulateMessage(leftBatchBytes1)
 	leftInput.SimulateMessage(leftBatchBytes2)
+	leftInput.SimulateMessage(leftBatchBytes3)
 	leftInput.SimulateMessage(endSignal)
 
 	output.waitForAMessage()
@@ -388,8 +388,8 @@ func TestJoinMultipleBatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %s", err)
 	}
-	if msg.Sequences.GetCardinality() != 2 {
-		t.Fatalf("Expected cardinality 2 in sequence set, got %d", msg.Sequences.GetCardinality())
+	if msg.Sequences.GetCardinality() != 1 {
+		t.Fatalf("Expected cardinality 1 in sequence set, got %d", msg.Sequences.GetCardinality())
 	}
 	var lastMsg ic.Message
 	err = lastMsg.Unmarshal(output.sentMessages[3])
@@ -484,10 +484,9 @@ func TestMultipleJoiners(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 	output.waitForAMessage()
-	output.waitForAMessage()
 
-	if len(output.sentMessages) != 5 {
-		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 4 {
+		t.Fatalf("Expected 4 messages sent, got %d", len(output.sentMessages))
 	}
 
 	endSignalCount := 0
@@ -525,8 +524,8 @@ func TestMultipleJoiners(t *testing.T) {
 		t.Errorf("Some expected rows were not found in output: %v", expectedJoinedRows)
 	}
 
-	if ackedSequences.GetCardinality() != 3 {
-		t.Errorf("Expected cardinality 3 in sequence set, got %d", ackedSequences.GetCardinality())
+	if ackedSequences.GetCardinality() != 0 {
+		t.Errorf("Expected cardinality 0 in sequence set, got %d", ackedSequences.GetCardinality())
 	}
 
 	if endSignalCount != 1 {

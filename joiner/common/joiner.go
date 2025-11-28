@@ -14,13 +14,11 @@ type JoinerWorker struct {
 	rightInput    mw.MessageMiddleware
 	output        mw.MessageMiddleware
 	rightCache    *TableCache
-	joinedRows    [][]interface{}
-	rightDone     chan struct{}
-	closeChan     chan struct{}
 	leftSeqRecv   *roaring.Bitmap
 	jobID         string
 	removeFromMap chan string
 	closeOnce     sync.Once
+	rightSeqRecv  *roaring.Bitmap
 }
 
 func NewJoinerWorker(
@@ -36,22 +34,16 @@ func NewJoinerWorker(
 		leftInput:     leftInput,
 		rightInput:    rightInput,
 		output:        output,
-		closeChan:     make(chan struct{}),
-		rightDone:     make(chan struct{}),
 		rightCache:    nil,
-		joinedRows:    make([][]interface{}, 0),
 		leftSeqRecv:   roaring.New(),
 		jobID:         jobID,
 		removeFromMap: removeFromMap,
+		rightSeqRecv:  roaring.New(),
 	}
 }
 
 func (jw *JoinerWorker) Start() {
-	go func() {
-		jw.innerStart()
-	}()
-
-	<-jw.closeChan
+	jw.innerStart()
 	jw.Close()
 }
 
@@ -60,102 +52,141 @@ func (jw *JoinerWorker) Close() {
 		jw.leftInput.Close()
 		jw.rightInput.Close()
 		jw.output.Close()
-		jw.removeFromMap <- jw.jobID
+		if jw.removeFromMap != nil {
+			jw.removeFromMap <- jw.jobID
+		}
 		log.Debugf("Worker %s closed", jw.Config.WorkerId)
 	})
 }
 
 func (jw *JoinerWorker) innerStart() {
-	jw.rightInput.StartConsuming(jw.rightCallback())
-	<-jw.rightDone
+	// blocks until right input queue is closed
+	if err := jw.rightInput.StartConsuming(jw.rightCallback()); err != nil {
+		log.Errorf("Failed to start consuming right input messages for job %s: %v", jw.jobID, err)
+		return
+	}
 	log.Debugf("%s received all right input, starting left input", jw.Config.WorkerId)
 	log.Debugf("Right cache: %v", jw.rightCache)
-	jw.leftInput.StartConsuming(jw.leftCallback())
+	// blocks until left input queue is closed
+	if err := jw.leftInput.StartConsuming(jw.leftCallback()); err != nil {
+		log.Errorf("Failed to start consuming left input messages for job %s: %v", jw.jobID, err)
+	}
 }
 
 func (jw *JoinerWorker) rightCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		// Ensure we always notify the caller exactly once when the callback ends.
 		defer func() { done <- nil }()
 		jsonStr := string(consumeChannel.Body)
 		var receivedMsg ic.Message
 		if err := receivedMsg.Unmarshal([]byte(jsonStr)); err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
-			done <- nil
 			return
 		}
 
-		var err error
 		switch p := receivedMsg.Payload.(type) {
 		case *ic.RowsBatchPayload:
-			if jw.rightCache == nil {
-				jw.rightCache, err = NewTableCache(p.ColumnNames)
-				if err != nil {
-					log.Errorf("Failed to create right cache: %v", err)
-				}
-			}
-			if jw.rightCache != nil && len(p.Rows) != 0 {
-				for _, row := range p.Rows {
-					if err := jw.rightCache.AddRow(row); err != nil {
-						log.Errorf("Failed to add row to cache: %v", err)
-					}
-				}
-			}
+			jw.addNewRightBatch(p)
+
 		case *ic.EndSignalPayload:
-			jw.rightDone <- struct{}{}
+			jw.rightInput.Delete()
+
+		case *ic.SequenceSetPayload:
+			jw.rightSeqRecv.Or(p.Sequences.Bitmap)
+
 		default:
-			log.Warningf("Unknown payload type in right input: %T", p)
+			log.Warningf("Unexpected payload type in right input: %T", p)
+		}
+
+		// done is sent by the deferred function above
+	}
+}
+
+func (jw *JoinerWorker) addNewRightBatch(p *ic.RowsBatchPayload) {
+	var err error
+	if jw.rightCache == nil {
+		jw.rightCache, err = NewTableCache(p.ColumnNames)
+		if err != nil {
+			log.Errorf("Failed to create right cache: %v", err)
+		}
+	}
+
+	if jw.rightSeqRecv.Contains(p.SeqNum) {
+		log.Debugf("Duplicate right batch with SeqNum %d received, ignoring", p.SeqNum)
+		return
+	}
+	jw.rightSeqRecv.Add(p.SeqNum)
+
+	if jw.rightCache != nil && len(p.Rows) != 0 {
+		for _, row := range p.Rows {
+			if err := jw.rightCache.AddRow(row); err != nil {
+				log.Errorf("Failed to add row to cache: %v", err)
+			}
 		}
 	}
 }
 
 func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		// Ensure we always notify the caller exactly once when the callback ends.
+		defer func() { done <- nil }()
 		jsonStr := string(consumeChannel.Body)
 		var receivedMsg ic.Message
 		if err := receivedMsg.Unmarshal([]byte(jsonStr)); err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
-			done <- nil
 			return
 		}
 
 		switch p := receivedMsg.Payload.(type) {
 		case *ic.RowsBatchPayload:
-			if jw.leftSeqRecv.Contains(p.SeqNum) {
-				log.Debugf("Duplicate left batch with SeqNum %d received, ignoring", p.SeqNum)
-				done <- nil
-				return
-			}
-
-			if len(p.Rows) != 0 {
-				jw.joinBatch(p)
-			}
-			jw.leftSeqRecv.Add(p.SeqNum)
-			done <- nil
+			jw.processLeftRowsBatch(p)
 
 		case *ic.EndSignalPayload:
-			jw.sendJoinedResults()
 			jw.sendJoinedSequenceSet()
 			jw.propagateLeftEndSignal(p)
-			done <- nil
-			close(jw.closeChan)
 
 		case *ic.SequenceSetPayload:
 			jw.leftSeqRecv.Or(p.Sequences.Bitmap)
-			done <- nil
 
 		default:
-			log.Warningf("Unknown payload type in right input: %T", p)
+			log.Warningf("Unexpected payload type in right input: %T", p)
 		}
+
+		// done is sent by the deferred function above
 	}
 }
 
+func (jw *JoinerWorker) processLeftRowsBatch(p *ic.RowsBatchPayload) {
+	if jw.leftSeqRecv.Contains(p.SeqNum) {
+		log.Debugf("Duplicate left batch with SeqNum %d received, ignoring", p.SeqNum)
+		return
+	}
+
+	if len(p.Rows) == 0 {
+		jw.leftSeqRecv.Add(p.SeqNum)
+		return
+	}
+
+	joinedBatch := jw.joinBatch(p)
+	if len(joinedBatch) == 0 {
+		jw.leftSeqRecv.Add(p.SeqNum)
+		return
+	}
+
+	jw.sendJoinedBatch(joinedBatch, p.SeqNum)
+}
+
 func (jw *JoinerWorker) sendJoinedSequenceSet() {
+	if jw.leftSeqRecv.GetCardinality() == 0 {
+		return
+	}
 	msg := ic.NewSequenceSet(jw.Config.WorkerId, jw.leftSeqRecv)
 	data, err := msg.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal sequence set: %v", err)
 		return
 	}
+	log.Debugf("Sending sequence set, bytes: %d", len(data))
 	if err := jw.output.Send(data); err != nil {
 		log.Errorf("Failed to send sequence set: %v", err)
 	}
@@ -170,6 +201,7 @@ func (jw *JoinerWorker) propagateLeftEndSignal(payload *ic.EndSignalPayload) {
 		log.Debugf("All workers done")
 		endSignal, _ := ic.NewEndSignal(nil, payload.SeqNum).Marshal()
 		jw.output.Send(endSignal)
+		jw.leftInput.Delete()
 		return
 	}
 
@@ -178,10 +210,10 @@ func (jw *JoinerWorker) propagateLeftEndSignal(payload *ic.EndSignalPayload) {
 	jw.leftInput.Send(endSignal) // re-enqueue the end signal with updated workers done
 }
 
-func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatchPayload) {
+func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatchPayload) [][]interface{} {
 	if jw.rightCache == nil {
 		log.Errorf("Right cache is nil, cannot join")
-		return
+		return nil
 	}
 
 	joinKeyIndexLeft := findColumnIndex(jw.Config.JoinKey, batch.ColumnNames)
@@ -191,8 +223,10 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatchPayload) {
 		log.Errorf("Join key (%s) not found in columns", jw.Config.JoinKey)
 		log.Errorf("Left columns: %v", batch.ColumnNames)
 		log.Errorf("Right columns: %v", jw.rightCache.Columns)
-		return
+		return nil
 	}
+
+	joinedRows := make([][]interface{}, 0)
 
 	for _, leftRow := range batch.Rows {
 		if leftRow == nil || len(leftRow) <= joinKeyIndexLeft {
@@ -208,10 +242,14 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatchPayload) {
 			rightKey := rightRow[joinKeyIndexRight]
 
 			if keyMatches(leftKey, rightKey) {
-				jw.addJoinedRow(batch, leftRow, rightRow)
+				jw.addJoinedRow(&joinedRows, batch.ColumnNames, leftRow, rightRow)
 			}
 		}
 	}
+	if len(joinedRows) == 0 {
+		log.Debugf("No joined rows found for left batch SeqNum %d", batch.SeqNum)
+	}
+	return joinedRows
 }
 
 func keyMatches(leftKey interface{}, rightKey interface{}) bool {
@@ -233,10 +271,10 @@ func keyMatches(leftKey interface{}, rightKey interface{}) bool {
 	return toString(leftKey) == toString(rightKey)
 }
 
-func (jw *JoinerWorker) addJoinedRow(batch *ic.RowsBatchPayload, leftRow []interface{}, rightRow []interface{}) {
+func (jw *JoinerWorker) addJoinedRow(joinedRows *[][]interface{}, columnNames []string, leftRow []interface{}, rightRow []interface{}) {
 	joinedRow := make([]interface{}, len(jw.Config.OutputColumns))
 	for i, col := range jw.Config.OutputColumns {
-		leftColIndex := findColumnIndex(col, batch.ColumnNames)
+		leftColIndex := findColumnIndex(col, columnNames)
 		if leftColIndex != -1 {
 			joinedRow[i] = leftRow[leftColIndex]
 			continue
@@ -248,46 +286,18 @@ func (jw *JoinerWorker) addJoinedRow(batch *ic.RowsBatchPayload, leftRow []inter
 			joinedRow[i] = nil
 		}
 	}
-	jw.joinedRows = append(jw.joinedRows, joinedRow)
+	*joinedRows = append(*joinedRows, joinedRow)
 }
 
-func (jw *JoinerWorker) sendJoinedResults() {
-	if len(jw.joinedRows) == 0 {
-		log.Debugf("No joined rows to send")
-		return
-	}
-
-	batchSize := jw.Config.BatchSize
-	currentBatch := &ic.RowsBatchPayload{
-		ColumnNames: jw.Config.OutputColumns,
-		Rows:        make([][]interface{}, 0),
-		SeqNum:      0,
-	}
-
-	for i, row := range jw.joinedRows {
-		currentBatch.Rows = append(currentBatch.Rows, row)
-
-		if (i+1)%batchSize == 0 {
-			jw.sendBatch(currentBatch)
-			currentBatch.Rows = make([][]interface{}, 0)
-		}
-	}
-
-	if len(currentBatch.Rows) > 0 {
-		jw.sendBatch(currentBatch)
-	}
-}
-
-func (jw *JoinerWorker) sendBatch(batch *ic.RowsBatchPayload) {
-	log.Debugf("Worker %s sending batch of rows %d", jw.Config.WorkerId, len(batch.Rows))
-	msg := ic.NewRowsBatch(batch.ColumnNames, batch.Rows, 0)
-	data, err := msg.Marshal()
+func (jw *JoinerWorker) sendJoinedBatch(joinedBatch [][]interface{}, seqNum uint64) {
+	batch := ic.NewRowsBatch(jw.Config.OutputColumns, joinedBatch, seqNum)
+	batchBytes, err := batch.Marshal()
 	if err != nil {
-		log.Errorf("Failed to marshal batch: %v", err)
+		log.Errorf("Failed to marshal joined batch: %v", err)
 		return
 	}
-
-	if err := jw.output.Send(data); err != nil {
-		log.Errorf("Failed to send batch: %v", err)
+	log.Debugf("Sending joined batch, rows: %d, bytes: %d", len(joinedBatch), len(batchBytes))
+	if err := jw.output.Send(batchBytes); err != nil {
+		log.Errorf("Failed to send joined batch: %v", err)
 	}
 }
