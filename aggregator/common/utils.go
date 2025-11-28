@@ -3,6 +3,7 @@ package common
 import (
 	a "aggregator/common/aggFunctions"
 	"fmt"
+	"strings"
 
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 )
@@ -96,4 +97,28 @@ func getBatchFromAggregatedRows(
 		ColumnNames: aggregatedColumnNames,
 		Rows:        *aggregatedRows,
 	}
+}
+
+func aggIndexesToSlice(aggIndexes map[string]int, aggs []a.AggConfig) []int {
+	indexes := make([]int, len(aggs))
+	for i, agg := range aggs {
+		indexes[i] = aggIndexes[agg.Col]
+	}
+	return indexes
+}
+
+func hasNil(groupByIndexes []int, row []interface{}) bool {
+	for _, idx := range groupByIndexes {
+		value := row[idx]
+		if value == nil {
+			return true
+		}
+		if strValue, ok := value.(string); ok {
+			strValue = strings.TrimSpace(strings.ToUpper(strValue))
+			if strValue == "" || strValue == "NULL" {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -45,10 +46,18 @@ func main() {
 	}
 
 	runningFilters := make(map[string]*filter.FilterWorker)
-	handleNewIncommingJob := getHandleIncommingJob(config, runningFilters)
+	runningFiltersLock := sync.Mutex{}
+	removeFromMap := make(chan string, 10)
+	handleNewIncommingJob := getHandleIncommingJob(config, runningFilters, &runningFiltersLock, removeFromMap)
 
-	jobAnnouncements.StartConsuming(handleNewIncommingJob)
+	go func() {
+		if err := jobAnnouncements.StartConsuming(handleNewIncommingJob); err != nil {
+			log.Fatalf("Failed to start consuming messages: %v", err)
+		}
+		log.Warningf("Job announcements queue closed! Stopped receiving new jobs")
+	}()
 
+	go removeDoneJobs(runningFilters, &runningFiltersLock, removeFromMap)
 	// Wait for termination signal
 	sig := <-sigChan
 	log.Infof("Received signal: %v. Initiating graceful shutdown...", sig)
@@ -59,7 +68,15 @@ func main() {
 	log.Info("Filter service shutdown completed.")
 }
 
-func getHandleIncommingJob(config Config, runningFilters map[string]*filter.FilterWorker) mw.OnMessageCallback {
+func removeDoneJobs(runningFilters map[string]*filter.FilterWorker, mutex *sync.Mutex, removeFromMap chan string) {
+	for jobID := range removeFromMap {
+		mutex.Lock()
+		delete(runningFilters, jobID)
+		mutex.Unlock()
+	}
+}
+
+func getHandleIncommingJob(config Config, runningFilters map[string]*filter.FilterWorker, mutex *sync.Mutex, removeFromMap chan string) mw.OnMessageCallback {
 
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		var id uuid.UUID
@@ -97,9 +114,12 @@ func getHandleIncommingJob(config Config, runningFilters map[string]*filter.Filt
 			return
 		}
 
-		filterWorker := filter.NewFilter(config.FilterId, input, output, config.FilterType, config.WorkersCount)
+		idStr := id.String()
+		filterWorker := filter.NewFilter(config.FilterId, input, output, config.FilterType, config.WorkersCount, removeFromMap, idStr)
 
-		runningFilters[id.String()] = filterWorker
+		mutex.Lock()
+		runningFilters[idStr] = filterWorker
+		mutex.Unlock()
 
 		go func() {
 			log.Infof("Starting filter rutine (ID: %s, Type: %s, JobID: %s)", config.FilterId, config.FilterType, id.String())

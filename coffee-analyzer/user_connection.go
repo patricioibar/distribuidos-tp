@@ -3,6 +3,8 @@ package main
 import (
 	responseparser "cofee-analyzer/response_parser"
 	"encoding/json"
+	"math/rand"
+	"time"
 
 	"communication"
 
@@ -20,12 +22,16 @@ type CoffeeAnalyzer struct {
 	parser        []responseparser.ResponseParser
 	jobPublisher  *middleware.Producer
 	totalWorkers  int
+	duplicateProb float64
 }
 
 const jobPublishingExchange = "JOB_SOURCE"
 
 func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 	jobPublisher, _ := middleware.NewProducer(jobPublishingExchange, config.MiddlewareAddress)
+
+	// Seed RNG for duplicated message sampling
+	rand.Seed(time.Now().UnixNano())
 
 	return &CoffeeAnalyzer{
 		Address:       config.ListeningAddress,
@@ -34,6 +40,7 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 		parser:        []responseparser.ResponseParser{},
 		jobPublisher:  jobPublisher,
 		totalWorkers:  config.TotalWorkers,
+		duplicateProb: config.DuplicateProb,
 	}
 }
 
@@ -110,7 +117,14 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 		json.Unmarshal(data, &payload)
 		rowsBatch := innercommunication.NewRowsBatch(header, payload, seqNumber)
 		rowsBatchMarshaled, _ := rowsBatch.Marshal()
+		// Send batch once
 		producer.Send(rowsBatchMarshaled)
+		// With probability duplicateProb, send a duplicate
+		if ca.duplicateProb > 0.0 {
+			if rand.Float64() < ca.duplicateProb {
+				producer.Send(rowsBatchMarshaled)
+			}
+		}
 		seqNumber++
 	}
 	endSignal := innercommunication.NewEndSignal(nil, seqNumber)
@@ -140,7 +154,10 @@ func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	defer consumer.Close()
+	defer func() {
+		consumer.Close()
+		consumer.Delete()
+	}()
 
 	ready := make(chan bool, 1)
 	readyCount := 0
@@ -151,13 +168,16 @@ func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
 		}
 		done <- nil
 	}
-	consumer.StartConsuming(callback)
+
+	go func() {
+		if err := consumer.StartConsuming(callback); err != nil {
+			log.Errorf("Failed to consume workers ready notification for job %v: %v", id, err)
+		}
+	}()
 
 	bytes, _ := id.MarshalBinary()
-	er := ca.jobPublisher.Send(bytes)
-	if er != nil {
-		consumer.Close()
-		return er
+	if err := ca.jobPublisher.Send(bytes); err != nil {
+		return err
 	}
 	<-ready
 	log.Infof("All workers ready for new job %v", id)

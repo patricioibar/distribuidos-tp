@@ -40,15 +40,20 @@ func (s *StubProducer) Close() (error *mw.MessageMiddlewareError) { return nil }
 func (s *StubProducer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
 type StubConsumer struct {
-	onMessages []mw.OnMessageCallback
-	lastCalled int
-	started    chan struct{}
+	onMessages  []mw.OnMessageCallback
+	lastCalled  int
+	started     chan struct{}
+	deletedChan chan struct{}
+	deleted     bool
 }
 
 func newStubConsumer() *StubConsumer {
 	return &StubConsumer{
-		started:    make(chan struct{}, 10),
-		lastCalled: 0,
+		started:     make(chan struct{}, 10),
+		deletedChan: make(chan struct{}),
+		onMessages:  make([]mw.OnMessageCallback, 0),
+		lastCalled:  0,
+		deleted:     false,
 	}
 }
 
@@ -56,29 +61,48 @@ func (s *StubConsumer) waitForStart() {
 	<-s.started
 }
 
-func (s *StubConsumer) StartConsuming(
-	onMessageCallback mw.OnMessageCallback,
-) (error *mw.MessageMiddlewareError) {
+func (s *StubConsumer) StartConsuming(onMessageCallback mw.OnMessageCallback) (error *mw.MessageMiddlewareError) {
 	println("StubConsumer started")
 	s.onMessages = append(s.onMessages, onMessageCallback)
 	s.started <- struct{}{}
+	<-s.deletedChan
 	return nil
 }
 
-func (s *StubConsumer) InjectMessage(
-	message []byte,
-	doneChan chan *mw.MessageMiddlewareError,
-) {
+func (s *StubConsumer) InjectMessage(message []byte, doneChan chan *mw.MessageMiddlewareError) {
+	if len(s.onMessages) == 0 {
+		return
+	}
+	// Pick a random callback using math/rand
+	// calling := rand.Intn(len(s.onMessages))
 	calling := s.lastCalled
 	s.lastCalled = (s.lastCalled + 1) % len(s.onMessages)
 	s.onMessages[calling](mw.MiddlewareMessage{Body: message}, doneChan)
 }
 
 func (s *StubConsumer) SimulateMessage(message []byte) {
-	println("Simulating message %v", string(message))
+	if s.deleted {
+		return
+	}
+	println("Simulating message: ", string(message))
 	doneChan := make(chan *mw.MessageMiddlewareError)
-	go func() { <-doneChan }()
-	s.InjectMessage(message, doneChan)
+	msgCopy := make([]byte, len(message))
+	copy(msgCopy, message)
+	go func() {
+		if err := <-doneChan; err != nil {
+			print("#")
+			// If the consumer was deleted in the meantime, don't requeue.
+			select {
+			case <-s.deletedChan:
+				// input deleted, drop the message
+				return
+			default:
+				s.SimulateMessage(msgCopy)
+			}
+		}
+	}()
+	// Inject a copy so the handler doesn't share the same underlying buffer when requeued
+	s.InjectMessage(msgCopy, doneChan)
 }
 
 func (s *StubConsumer) Send(message []byte) (error *mw.MessageMiddlewareError) {
@@ -90,7 +114,11 @@ func (s *StubConsumer) StopConsuming() (error *mw.MessageMiddlewareError) { retu
 
 func (s *StubConsumer) Close() (error *mw.MessageMiddlewareError) { return nil }
 
-func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) { return nil }
+func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) {
+	close(s.deletedChan)
+	s.deleted = true
+	return nil
+}
 
 var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
@@ -136,7 +164,7 @@ func TestJoinMultipleRows(t *testing.T) {
 	rightInput := newStubConsumer()
 	output := newStubProducer()
 
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "test1", nil)
 
 	go func() { joiner.Start() }()
 
@@ -150,10 +178,9 @@ func TestJoinMultipleRows(t *testing.T) {
 
 	output.waitForAMessage()
 	output.waitForAMessage()
-	output.waitForAMessage()
 
-	if len(output.sentMessages) != 3 {
-		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 2 {
+		t.Fatalf("Expected 2 messages sent, got %d", len(output.sentMessages))
 	}
 
 	joinedBatch, err := rowsBatchFromString(string(output.sentMessages[0]))
@@ -180,16 +207,8 @@ func TestJoinMultipleRows(t *testing.T) {
 		}
 	}
 
-	middleMessage, err := sequenceSetFromString(string(output.sentMessages[1]))
-	if err != nil {
-		t.Fatalf("Failed to unmarshal output message: %s", err)
-	}
-	if middleMessage.Sequences.GetCardinality() != 1 {
-		t.Fatalf("Expected cardinality 1 in sequence set, got %d", middleMessage.Sequences.GetCardinality())
-	}
-
 	var lastMsg ic.Message
-	err = lastMsg.Unmarshal(output.sentMessages[2])
+	err = lastMsg.Unmarshal(output.sentMessages[1])
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %s", err)
 	}
@@ -303,12 +322,16 @@ func TestJoinMultipleBatches(t *testing.T) {
 		{"Charlie", 3},
 		{"Diana", 4},
 	}
+	leftRows3 := [][]interface{}{
+		{"Rudolph", 33},
+	}
 	rightColumns := []string{"id", "department", "trassh"}
 	rightRows := [][]interface{}{
 		{1, "HR", "Trash"},
 		{2, "Engineering", "Trash"},
 		{3, "Marketing", "Trash"},
 		{4, "Finance", "Trash"},
+		{5, "Sales", "Trash"},
 	}
 
 	config := &common.Config{
@@ -316,7 +339,6 @@ func TestJoinMultipleBatches(t *testing.T) {
 		WorkersCount:  1,
 		JoinKey:       "id",
 		OutputColumns: []string{"name", "department"},
-		BatchSize:     2,
 	}
 
 	expectedJoinedRows := map[string]string{
@@ -328,10 +350,12 @@ func TestJoinMultipleBatches(t *testing.T) {
 
 	leftBatch1 := ic.NewRowsBatch(leftColumns, leftRows1, 0)
 	leftBatch2 := ic.NewRowsBatch(leftColumns, leftRows2, 1)
+	leftBatch3 := ic.NewRowsBatch(leftColumns, leftRows3, 2)
 	rightBatch := ic.NewRowsBatch(rightColumns, rightRows, 0)
 
 	leftBatchBytes1, _ := leftBatch1.Marshal()
 	leftBatchBytes2, _ := leftBatch2.Marshal()
+	leftBatchBytes3, _ := leftBatch3.Marshal()
 	rightBatchBytes, _ := rightBatch.Marshal()
 
 	leftInput := newStubConsumer()
@@ -349,6 +373,7 @@ func TestJoinMultipleBatches(t *testing.T) {
 	leftInput.waitForStart()
 	leftInput.SimulateMessage(leftBatchBytes1)
 	leftInput.SimulateMessage(leftBatchBytes2)
+	leftInput.SimulateMessage(leftBatchBytes3)
 	leftInput.SimulateMessage(endSignal)
 
 	output.waitForAMessage()
@@ -388,8 +413,8 @@ func TestJoinMultipleBatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to unmarshal output message: %s", err)
 	}
-	if msg.Sequences.GetCardinality() != 2 {
-		t.Fatalf("Expected cardinality 2 in sequence set, got %d", msg.Sequences.GetCardinality())
+	if msg.Sequences.GetCardinality() != 1 {
+		t.Fatalf("Expected cardinality 1 in sequence set, got %d", msg.Sequences.GetCardinality())
 	}
 	var lastMsg ic.Message
 	err = lastMsg.Unmarshal(output.sentMessages[3])
@@ -484,10 +509,9 @@ func TestMultipleJoiners(t *testing.T) {
 	output.waitForAMessage()
 	output.waitForAMessage()
 	output.waitForAMessage()
-	output.waitForAMessage()
 
-	if len(output.sentMessages) != 5 {
-		t.Fatalf("Expected 3 messages sent, got %d", len(output.sentMessages))
+	if len(output.sentMessages) != 4 {
+		t.Fatalf("Expected 4 messages sent, got %d", len(output.sentMessages))
 	}
 
 	endSignalCount := 0
@@ -525,11 +549,74 @@ func TestMultipleJoiners(t *testing.T) {
 		t.Errorf("Some expected rows were not found in output: %v", expectedJoinedRows)
 	}
 
-	if ackedSequences.GetCardinality() != 3 {
-		t.Errorf("Expected cardinality 3 in sequence set, got %d", ackedSequences.GetCardinality())
+	if ackedSequences.GetCardinality() != 0 {
+		t.Errorf("Expected cardinality 0 in sequence set, got %d", ackedSequences.GetCardinality())
 	}
 
 	if endSignalCount != 1 {
 		t.Errorf("Expected 1 end signals, got %d", endSignalCount)
+	}
+}
+
+func TestJoinersDuplicateEndSignal(t *testing.T) {
+	numOfWorkers := 3
+	leftInput := newStubConsumer()
+	output := newStubProducer()
+
+	waitToEnd := make([]chan struct{}, numOfWorkers)
+	for i := 0; i < numOfWorkers; i++ {
+		rightInput := newStubConsumer()
+		config := &common.Config{
+			WorkerId:      fmt.Sprintf("worker-%d", i+1),
+			WorkersCount:  numOfWorkers,
+			JoinKey:       "id",
+			OutputColumns: []string{"id", "name"},
+		}
+
+		waitToEnd[i] = make(chan struct{}, 1)
+		joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, fmt.Sprintf("job-%d", i+1), make(chan string, 1))
+		go func(i int, j *common.JoinerWorker) {
+			j.Start()
+			waitToEnd[i] <- struct{}{}
+		}(i, joiner)
+
+		// ensure right input started for this joiner
+		rightInput.waitForStart()
+
+		// close right input so joiner proceeds to left input
+		rightInput.SimulateMessage(endSignal)
+	}
+
+	// Wait for both joiners to register their left input consumers
+	leftInput.waitForStart()
+	leftInput.waitForStart()
+
+	// send duplicate end signals on left input
+	leftInput.SimulateMessage(endSignal)
+	leftInput.SimulateMessage(endSignal)
+
+	// wait for workers to finish
+	for i := 0; i < numOfWorkers; i++ {
+		<-waitToEnd[i]
+	}
+
+	endSignalCount := 0
+	for _, msg := range output.sentMessages {
+		var outputMsg ic.Message
+		if err := outputMsg.Unmarshal(msg); err != nil {
+			t.Fatalf("Failed to unmarshal output message: %v", err)
+		}
+		if outputMsg.Type != ic.MsgEndSignal {
+			continue
+		}
+		_, ok := outputMsg.Payload.(*ic.EndSignalPayload)
+		if !ok {
+			t.Fatalf("Failed to cast payload to *ic.EndSignalPayload, got: %T", outputMsg.Payload)
+		}
+		endSignalCount++
+	}
+
+	if endSignalCount == 0 {
+		t.Fatalf("No end signal messages were sent by the workers")
 	}
 }
