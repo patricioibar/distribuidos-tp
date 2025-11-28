@@ -17,6 +17,7 @@ type StateLog interface {
 	RotateWAL() error
 	WriteSnapshot(state []byte) (string, error)
 	Restore() ([]byte, EntryIterator, error)
+	GetLogsIterator() (EntryIterator, error)
 	Close() error
 }
 
@@ -35,7 +36,7 @@ const (
 	snapSuffix = ".snap"
 )
 
-func newStateLog(dir string) (StateLog, error) {
+func NewStateLog(dir string) (StateLog, error) {
 	l := &stateLog{
 		dir:         dir,
 		walDir:      filepath.Join(dir, "wal"),
@@ -202,6 +203,18 @@ func (l *stateLog) Restore() ([]byte, EntryIterator, error) {
 	iter := newWALIterator(walPaths)
 
 	return snapData, iter, nil
+}
+
+func (l *stateLog) GetLogsIterator() (EntryIterator, error) {
+	WALPaths, err := filepath.Glob(filepath.Join(l.walDir, walPrefix+"*"+walSuffix))
+	if err != nil {
+		return nil, err
+	}
+	if WALPaths == nil {
+		return nil, fmt.Errorf("no WAL files found")
+	}
+	sort.Strings(WALPaths)
+	return newWALIterator(WALPaths), nil
 }
 
 // Closes the currently opended WAL file

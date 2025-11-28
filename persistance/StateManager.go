@@ -25,7 +25,7 @@ func RegisterOperation(typeID byte, decoder OperationDecoder) {
 }
 
 type State interface {
-	Apply([]byte) error
+	Apply(Operation) error
 
 	Serialize() ([]byte, error)
 
@@ -55,7 +55,7 @@ func NewStateManager(state State, stateLog StateLog, snapshotPeriod int) (*State
 }
 
 // Applies an operation to the current internal state of the logger(used to persist state changes and take snapshots) and logs it
-func (sm *StateManager) log(op Operation) error {
+func (sm *StateManager) Log(op Operation) error {
 	entry, err := op.Encode()
 	if err != nil {
 		return err
@@ -117,7 +117,11 @@ func (sm *StateManager) Restore() error {
 		if entry == nil {
 			break
 		}
-		err = sm.state.Apply(entry)
+		op, err := sm.decodeOperation(entry)
+		if err != nil {
+			return err
+		}
+		err = sm.state.Apply(op)
 		if err != nil {
 			return err
 		}
@@ -125,8 +129,8 @@ func (sm *StateManager) Restore() error {
 	return nil
 }
 
-func (sm *StateManager) getOperationWithSeqNumber(seqNumber uint64) (Operation, error) {
-	_, walIt, err := sm.stateLog.Restore()
+func (sm *StateManager) GetOperationWithSeqNumber(seqNumber uint64) (Operation, error) {
+	walIt, err := sm.stateLog.GetLogsIterator()
 	if err != nil {
 		return nil, err
 	}
