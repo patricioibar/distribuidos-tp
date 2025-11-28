@@ -33,7 +33,7 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string, 
 	q, err := ch.QueueDeclare(
 		consumerName+key, // name
 		false,            // durable
-		true,             // delete when unused
+		false,            // delete when unused (no auto-delete)
 		false,            // exclusive
 		false,            // no-wait
 		nil,              // arguments
@@ -72,6 +72,49 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string, 
 
 	return &Consumer{
 		name:       q.Name,
+		sourceName: sourceName,
+		channel:    ch,
+		quit:       make(chan struct{}),
+		done:       make(chan struct{}),
+	}, nil
+}
+
+// ResumeConsumer attempts to create a Consumer structure for an existing queue
+// but will NOT create the queue. If the named queue does not exist, it returns
+// (nil, nil).
+func ResumeConsumer(consumerName string, sourceName string, connectionAddr string, keys ...string) (*Consumer, error) {
+	ch, err := GetConnection(connectionAddr).Channel()
+	if err != nil {
+		return nil, err
+	}
+
+	key := ""
+	if len(keys) > 0 {
+		key = keys[0]
+	}
+
+	qName := consumerName + key
+
+	// Inspect the queue without creating it. If it does not exist, return (nil, nil).
+	// QueueInspect is deprecated; use QueueDeclarePassive (equivalent to passive QueueDeclare).
+	_, err = ch.QueueDeclarePassive(qName, false, false, false, false, nil)
+	if err != nil {
+		// If the error is a NOT_FOUND from the server, return (nil, nil).
+		amqp.Logger.Printf("Error inspecting queue %s: %v", qName, err)
+		if amqpErr, ok := err.(*amqp.Error); ok && amqpErr.Code == 404 {
+			_ = ch.Close()
+			return nil, nil
+		}
+
+		// Other errors (e.g., connection issues) should be returned.
+		_ = ch.Close()
+		return nil, err
+	}
+
+	// The queue exists. Create the Consumer structure but do not re-declare the queue
+	// or exchange; bindings are assumed to be already present.
+	return &Consumer{
+		name:       qName,
 		sourceName: sourceName,
 		channel:    ch,
 		quit:       make(chan struct{}),
@@ -136,7 +179,14 @@ func (c *Consumer) StopConsuming() *MessageMiddlewareError {
 
 	c.closeOnce.Do(func() {
 		close(c.quit) // señal al goroutine que pare
-		<-c.done      // esperar a que termine
+
+		// If StartConsuming was never called, the goroutine that closes c.done
+		// was never started and <-c.done would block forever. In that case we
+		// detect that no deliveries channel was set and skip waiting. If the
+		// deliveries channel is set we wait for the goroutine to finish.
+		if c.deliveries != nil {
+			<-c.done // esperar a que termine
+		}
 	})
 
 	return nil
@@ -174,11 +224,23 @@ func (c *Consumer) Close() (error *MessageMiddlewareError) {
 func (c *Consumer) Delete() (error *MessageMiddlewareError) {
 	c.StopConsuming()
 
+	var firstErr *MessageMiddlewareError
+
 	if c.channel != nil {
 		_, err := c.channel.QueueDelete(c.name, false, false, false)
 		if err != nil {
-			return &MessageMiddlewareError{Code: MessageMiddlewareDeleteError, Msg: "Failed to delete queue: " + err.Error()}
+			firstErr = &MessageMiddlewareError{Code: MessageMiddlewareDeleteError, Msg: "Failed to delete queue: " + err.Error()}
+		}
+
+		if err := c.channel.Close(); err != nil {
+			if firstErr == nil {
+				firstErr = &MessageMiddlewareError{Code: MessageMiddlewareCloseError, Msg: "Failed to close channel: " + err.Error()}
+			} else {
+				// append info about close failure
+				firstErr.Msg = firstErr.Msg + "; failed to close channel: " + err.Error()
+			}
 		}
 	}
-	return nil
+
+	return firstErr
 }
