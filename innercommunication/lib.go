@@ -1,12 +1,11 @@
 package innercommunication
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 )
 
 type MessageType string
@@ -14,7 +13,7 @@ type MessageType string
 const (
 	MsgRowsBatch      MessageType = "RowsBatch"
 	MsgEndSignal      MessageType = "EndSignal"
-	MsgSequenceSet	  MessageType = "SequenceSet"
+	MsgSequenceSet    MessageType = "SequenceSet"
 	MsgAggregatedData MessageType = "AggregatedData"
 )
 
@@ -35,21 +34,20 @@ func (e *EndSignalPayload) AddWorkerDone(id string) {
 	e.WorkersDone = append(e.WorkersDone, id)
 }
 
-// JSONRoaringBitmap es un wrapper para manejar la serialización a Base64
-// automáticamente, ya que JSON no soporta binarios nativos de manera eficiente.
-type JSONRoaringBitmap struct {
-	*roaring.Bitmap
+// wrapper para manejar la serialización a Base64
+type JSONBitmap struct {
+	*bitmap.Bitmap
 }
 
 type SequenceSetPayload struct {
-	Sequences *JSONRoaringBitmap `json:"sequences"` // Wrapper personalizado
-	WorkerID  string             `json:"worker_id"`
+	Sequences *JSONBitmap `json:"sequences"`
+	WorkerID  string      `json:"worker_id"`
 }
 
 type AggregatedDataPayload struct {
 	ColumnNames []string        `json:"column_names"`
 	Rows        [][]interface{} `json:"rows"`
-	WorkerID	string			`json:"worker_id"`
+	WorkerID    string          `json:"worker_id"`
 	SeqNum      uint64          `json:"seq_num"`
 }
 
@@ -61,22 +59,19 @@ type Message struct {
 	Payload interface{} `json:"payload"`
 }
 
-// MarshalJSON para JSONRoaringBitmap: Convierte el bitmap a Base64
-func (r *JSONRoaringBitmap) MarshalJSON() ([]byte, error) {
+func (r *JSONBitmap) MarshalJSON() ([]byte, error) {
 	if r.Bitmap == nil {
 		return []byte("null"), nil
 	}
-	var buf bytes.Buffer
-	_, err := r.WriteTo(&buf) // Escribe formato binario eficiente
+	data, err := r.Bitmap.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+	encoded := base64.StdEncoding.EncodeToString(data)
 	return json.Marshal(encoded)
 }
 
-// UnmarshalJSON para JSONRoaringBitmap: Convierte de Base64 a bitmap
-func (r *JSONRoaringBitmap) UnmarshalJSON(data []byte) error {
+func (r *JSONBitmap) UnmarshalJSON(data []byte) error {
 	var encoded string
 	if err := json.Unmarshal(data, &encoded); err != nil {
 		return err
@@ -85,9 +80,8 @@ func (r *JSONRoaringBitmap) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	r.Bitmap = roaring.New()
-	_, err = r.ReadFrom(bytes.NewReader(decoded))
-	return err
+	r.Bitmap = bitmap.New()
+	return r.Bitmap.UnmarshalBinary(decoded)
 }
 
 func (m *Message) Marshal() ([]byte, error) {
@@ -136,7 +130,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		m.Payload = &p
-	
+
 	case MsgAggregatedData:
 		var p AggregatedDataPayload
 		if err := json.Unmarshal(temp.Payload, &p); err != nil {
@@ -172,12 +166,12 @@ func NewEndSignal(workers []string, seq uint64) *Message {
 	}
 }
 
-func NewSequenceSet(workerID string, bitmap *roaring.Bitmap) *Message {
+func NewSequenceSet(workerID string, bm *bitmap.Bitmap) *Message {
 	// Clonamos o usamos el bitmap directamente, envuelto en nuestro tipo custom
 	return &Message{
 		Type: MsgSequenceSet,
 		Payload: &SequenceSetPayload{
-			Sequences: &JSONRoaringBitmap{Bitmap: bitmap},
+			Sequences: &JSONBitmap{Bitmap: bm},
 			WorkerID:  workerID,
 		},
 	}

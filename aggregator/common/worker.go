@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"sync"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/op/go-logging"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -24,11 +24,11 @@ type AggregatorWorker struct {
 	// Aggregated data
 	reducedData      map[string][]a.Aggregation
 	dataRetainer     dr.DataRetainer
-	processedBatches *roaring.Bitmap
+	processedBatches *bitmap.Bitmap
 	nextBatchToSend  uint64
 
 	// Reducer specific fields
-	rcvedAggData    map[string]*roaring.Bitmap
+	rcvedAggData    map[string]*bitmap.Bitmap
 	aggregatorsDone []string
 
 	// Closing synchronization
@@ -51,7 +51,7 @@ func NewAggregatorWorker(
 		output:           output,
 		reducedData:      reducedData,
 		dataRetainer:     dr.NewDataRetainer(config.Retainings),
-		processedBatches: roaring.New(),
+		processedBatches: bitmap.New(),
 		removeFromMap:    removeFromMap,
 		jobID:            jobID,
 		closeOnce:        sync.Once{},
@@ -62,7 +62,7 @@ func NewAggregatorWorker(
 
 	if config.IsReducer {
 		aggregator.callback = aggregator.reducerMessageCallback()
-		aggregator.rcvedAggData = make(map[string]*roaring.Bitmap)
+		aggregator.rcvedAggData = make(map[string]*bitmap.Bitmap)
 		aggregator.aggregatorsDone = make([]string, 0)
 	} else {
 		aggregator.callback = aggregator.aggregatorMessageCallback()
@@ -104,8 +104,7 @@ func (aw *AggregatorWorker) sendProcessedBatches() {
 	if err := aw.output.Send(seqSetBytes); err != nil {
 		log.Errorf("Failed to send processed batches message: %v", err)
 	}
-	// roaring.Bitmap.Maximum() panics if the bitmap is empty. Guard against
-	// that case and set nextBatchToSend to 0 when no processed batches exist.
+
 	if aw.processedBatches.GetCardinality() == 0 {
 		aw.nextBatchToSend = 0
 	} else {

@@ -3,7 +3,7 @@ package common
 import (
 	"sync"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -14,11 +14,11 @@ type JoinerWorker struct {
 	rightInput    mw.MessageMiddleware
 	output        mw.MessageMiddleware
 	rightCache    *TableCache
-	leftSeqRecv   *roaring.Bitmap
+	leftSeqRecv   *bitmap.Bitmap
 	jobID         string
 	removeFromMap chan string
 	closeOnce     sync.Once
-	rightSeqRecv  *roaring.Bitmap
+	rightSeqRecv  *bitmap.Bitmap
 }
 
 func NewJoinerWorker(
@@ -35,10 +35,10 @@ func NewJoinerWorker(
 		rightInput:    rightInput,
 		output:        output,
 		rightCache:    nil,
-		leftSeqRecv:   roaring.New(),
+		leftSeqRecv:   bitmap.New(),
 		jobID:         jobID,
 		removeFromMap: removeFromMap,
-		rightSeqRecv:  roaring.New(),
+		rightSeqRecv:  bitmap.New(),
 	}
 }
 

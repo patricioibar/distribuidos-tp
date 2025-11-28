@@ -3,7 +3,7 @@ package common
 import (
 	"slices"
 
-	roaring "github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
 )
@@ -70,7 +70,7 @@ func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceS
 		return
 	}
 
-	intersection := roaring.And(aw.processedBatches, p.Sequences.Bitmap)
+	intersection := bitmap.And(aw.processedBatches, p.Sequences.Bitmap)
 	if intersection.GetCardinality() != 0 {
 		log.Warningf(
 			"%s received duplicated data for job %s! Received %d duplicated sequence numbers: %s",
@@ -86,7 +86,7 @@ func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceS
 func (aw *AggregatorWorker) reduceAggregatedData(p *ic.AggregatedDataPayload) {
 	// check for duplicated batch from same worker
 	if _, ok := aw.rcvedAggData[p.WorkerID]; !ok {
-		aw.rcvedAggData[p.WorkerID] = roaring.New()
+		aw.rcvedAggData[p.WorkerID] = bitmap.New()
 	}
 	if aw.rcvedAggData[p.WorkerID].Contains(p.SeqNum) {
 		log.Warningf(
