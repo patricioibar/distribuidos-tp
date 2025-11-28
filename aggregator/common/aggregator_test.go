@@ -5,7 +5,6 @@ import (
 	agf "aggregator/common/aggFunctions"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"testing"
 
 	roaring "github.com/RoaringBitmap/roaring/roaring64"
@@ -43,22 +42,20 @@ func (s *StubProducer) Close() (error *mw.MessageMiddlewareError) { return nil }
 func (s *StubProducer) Delete() (error *mw.MessageMiddlewareError) { return nil }
 
 type StubConsumer struct {
-	onMessages     []mw.OnMessageCallback
-	onMessagesLock []sync.Mutex
-	lastCalled     int
-	started        chan struct{}
-	deletedChan    chan struct{}
-	deleted        bool
+	onMessages  []mw.OnMessageCallback
+	lastCalled  int
+	started     chan struct{}
+	deletedChan chan struct{}
+	deleted     bool
 }
 
 func newStubConsumer() *StubConsumer {
 	return &StubConsumer{
-		started:        make(chan struct{}, 10),
-		deletedChan:    make(chan struct{}),
-		onMessages:     make([]mw.OnMessageCallback, 0),
-		onMessagesLock: make([]sync.Mutex, 0),
-		lastCalled:     0,
-		deleted:        false,
+		started:     make(chan struct{}, 10),
+		deletedChan: make(chan struct{}),
+		onMessages:  make([]mw.OnMessageCallback, 0),
+		lastCalled:  0,
+		deleted:     false,
 	}
 }
 
@@ -69,7 +66,6 @@ func (s *StubConsumer) waitForStart() {
 func (s *StubConsumer) StartConsuming(onMessageCallback mw.OnMessageCallback) (error *mw.MessageMiddlewareError) {
 	println("StubConsumer started")
 	s.onMessages = append(s.onMessages, onMessageCallback)
-	s.onMessagesLock = append(s.onMessagesLock, sync.Mutex{})
 	s.started <- struct{}{}
 	<-s.deletedChan
 	return nil
