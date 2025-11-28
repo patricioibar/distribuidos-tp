@@ -1,6 +1,9 @@
 package persistance
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // Operation represents a state change operation
 //
@@ -112,6 +115,9 @@ func (sm *StateManager) Restore() error {
 	for {
 		entry, err := walIt.Next()
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
 		if entry == nil {
@@ -138,6 +144,9 @@ func (sm *StateManager) GetOperationWithSeqNumber(seqNumber uint64) (Operation, 
 	for {
 		entry, err := walIt.Next()
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return nil, err
 		}
 		if entry == nil {
