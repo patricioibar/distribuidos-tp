@@ -1,6 +1,7 @@
 package main
 
 import (
+	"communication"
 	"os"
 	"os/signal"
 	"sync"
@@ -61,6 +62,8 @@ func main() {
 	}
 	removeFromMap := make(chan string, 10)
 	callback := initializeAggregatorJob(config, jobsMap, &jobsMapLock, removeFromMap)
+
+	go communication.SendHeartBeat(config.WorkerId)
 
 	go func() {
 		if err := incomingJobs.StartConsuming(callback); err != nil {

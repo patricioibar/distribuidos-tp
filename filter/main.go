@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"communication"
+
 	"github.com/google/uuid"
 	"github.com/op/go-logging"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
@@ -49,6 +51,8 @@ func main() {
 	runningFiltersLock := sync.Mutex{}
 	removeFromMap := make(chan string, 10)
 	handleNewIncommingJob := getHandleIncommingJob(config, runningFilters, &runningFiltersLock, removeFromMap)
+
+	go communication.SendHeartBeat(config.FilterId)
 
 	go func() {
 		if err := jobAnnouncements.StartConsuming(handleNewIncommingJob); err != nil {

@@ -2,6 +2,7 @@ package communication
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
 	"time"
 
@@ -156,4 +157,24 @@ func (s *Socket) ReceiveUUID() (uuid.UUID, error) {
 		return uuid.UUID{}, err
 	}
 	return id, nil
+}
+
+func SendHeartBeat(workerId string) {
+	//falta cerrar la conexion en caso de ctrl+c?
+	addr, _ := net.ResolveUDPAddr("udp", "monitor-1:9000")
+
+	// This creates a UDP connection you can Write() to
+	conn, _ := net.DialUDP("udp", nil, addr)
+	defer conn.Close()
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		msg := []byte(workerId)
+		_, err := conn.Write(msg)
+		if err != nil {
+			fmt.Println("error sending heartbeat:", err)
+		}
+	}
 }

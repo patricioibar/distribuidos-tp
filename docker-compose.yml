@@ -35,6 +35,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
       interval: 10s
@@ -111,6 +113,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -132,6 +136,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -153,6 +159,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -175,6 +183,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -196,6 +206,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -217,6 +229,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -239,6 +253,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -260,6 +276,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -282,6 +300,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -303,6 +323,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -324,6 +346,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -349,6 +373,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -373,6 +399,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -397,6 +425,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -423,6 +453,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -448,6 +480,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -473,6 +507,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -497,6 +533,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -521,6 +559,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -546,6 +586,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -571,6 +613,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -595,6 +639,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -619,6 +665,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -644,6 +692,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -668,6 +718,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -692,6 +744,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -718,6 +772,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -743,6 +799,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -767,6 +825,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -791,6 +851,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -815,6 +877,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -839,6 +903,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -864,6 +930,31 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+    networks:
+      - coffee_analysis_net
+
+
+  monitor-1:
+    image: monitor:latest
+    container_name: monitor-1
+    build:
+      context: .
+      dockerfile: ./monitor/Dockerfile
+    environment:
+      MONITOR_ID: monitor-1
+      PORT: 9000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - coffee_analysis_net
 

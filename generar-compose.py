@@ -33,6 +33,8 @@ def add_filter_service(nodes: int, filterType: FilterType, input_name: str, outp
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -64,6 +66,8 @@ def add_itemsAggregator_service(nodes: int) -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -94,6 +98,8 @@ def add_itemsReducer_service() -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -122,6 +128,8 @@ def add_itemNames_joiner() -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -152,6 +160,8 @@ def add_tpvAggregator_service(nodes: int) -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -181,6 +191,8 @@ def add_tpvReducer_service() -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -211,6 +223,8 @@ def add_tpv_joiner(nodes: int) -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -242,6 +256,8 @@ def add_topUserAggregator_service(nodes: int) -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -272,6 +288,8 @@ def add_topUserReducer_service() -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -303,6 +321,8 @@ def add_topUserBirthdate_joiner(nodes: int) -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -332,6 +352,8 @@ def add_topUserStoreName_joiner() -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     networks:
       - coffee_analysis_net
 '''
@@ -391,6 +413,8 @@ def add_coffeeAnalyzer_service(total_workers: int) -> str:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
       interval: 10s
@@ -400,6 +424,32 @@ def add_coffeeAnalyzer_service(total_workers: int) -> str:
       - coffee_analysis_net
 '''
     return coffee_analyzer_template
+
+def add_monitors() -> str:
+    monitor_template = f'''
+  monitor-1:
+    image: monitor:latest
+    container_name: monitor-1
+    build:
+      context: .
+      dockerfile: ./monitor/Dockerfile
+    environment:
+      MONITOR_ID: monitor-1
+      PORT: 9000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - coffee_analysis_net
+'''
+    return monitor_template
 
 def add_analyst_service(nodes: int) -> str:
     result = ""
@@ -468,6 +518,7 @@ services:
 {add_topUserReducer_service()}
 {add_topUserBirthdate_joiner(num_topuser_birthdate_joiners)}
 {add_topUserStoreName_joiner()}
+{add_monitors()}
 {add_volumes_networks()}
 '''
 
@@ -489,6 +540,7 @@ nodes_count = {
 
 if __name__ == "__main__":
   file_name = "docker-compose.yml"
+  print("Generating docker-compose file...")
   if len(sys.argv) > 1:
     file_name = sys.argv[1]
   

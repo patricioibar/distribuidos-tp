@@ -1,6 +1,7 @@
 package main
 
 import (
+	"communication"
 	"os"
 	"os/signal"
 	"sync"
@@ -60,6 +61,9 @@ func main() {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
 	callback := initializeJoinerJob(config, jobsMap, &jobsMapLock, removeFromMap)
+
+	go communication.SendHeartBeat(config.WorkerId)
+
 	go func() {
 		if err := incomingJobs.StartConsuming(callback); err != nil {
 			log.Fatalf("Failed to start consuming messages: %v", err)
