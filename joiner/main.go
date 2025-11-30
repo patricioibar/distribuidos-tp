@@ -60,9 +60,12 @@ func main() {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
 	callback := initializeJoinerJob(config, jobsMap, &jobsMapLock, removeFromMap)
-	if err := incomingJobs.StartConsuming(callback); err != nil {
-		log.Fatalf("Failed to start consuming messages: %v", err)
-	}
+	go func() {
+		if err := incomingJobs.StartConsuming(callback); err != nil {
+			log.Fatalf("Failed to start consuming messages: %v", err)
+		}
+		log.Warning("Incoming jobs queue closed! Stopped receiving new jobs")
+	}()
 
 	go removeDoneJobs(jobsMap, &jobsMapLock, removeFromMap)
 

@@ -1,8 +1,6 @@
 package middleware_test
 
 import (
-	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
@@ -35,8 +33,10 @@ func TestProducerConsumerCommunication(t *testing.T) {
 	}
 
 	// Start consuming messages
-	errConsume := consumer.StartConsuming(callback)
-	assert.Nil(t, errConsume)
+	go func() {
+		errConsume := consumer.StartConsuming(callback)
+		assert.Nil(t, errConsume)
+	}()
 
 	// Send a test message
 	testMessage := "hello from producer"
@@ -82,10 +82,15 @@ func TestOneProducerTwoConsumersRoundRobin(t *testing.T) {
 		received2 <- string(msg.Body)
 		done <- nil
 	}
-	errConsume1 := consumer1.StartConsuming(callback1)
-	assert.Nil(t, errConsume1)
-	errConsume2 := consumer2.StartConsuming(callback2)
-	assert.Nil(t, errConsume2)
+
+	go func() {
+		errConsume1 := consumer1.StartConsuming(callback1)
+		assert.Nil(t, errConsume1)
+	}()
+	go func() {
+		errConsume2 := consumer2.StartConsuming(callback2)
+		assert.Nil(t, errConsume2)
+	}()
 
 	testMessage1 := "message 1"
 	errSend1 := producer.Send([]byte(testMessage1))
@@ -139,10 +144,15 @@ func TestOneProducerTwoConsumersClonedMessages(t *testing.T) {
 		received2 <- string(msg.Body)
 		done <- nil
 	}
-	errConsume1 := consumer1.StartConsuming(callback1)
-	assert.Nil(t, errConsume1)
-	errConsume2 := consumer2.StartConsuming(callback2)
-	assert.Nil(t, errConsume2)
+
+	go func() {
+		errConsume1 := consumer1.StartConsuming(callback1)
+		assert.Nil(t, errConsume1)
+	}()
+	go func() {
+		errConsume2 := consumer2.StartConsuming(callback2)
+		assert.Nil(t, errConsume2)
+	}()
 
 	testMessage := "hello to both consumers"
 	errSend := producer.Send([]byte(testMessage))
@@ -183,8 +193,11 @@ func TestTwoProducersOneConsumer(t *testing.T) {
 		received <- string(msg.Body)
 		done <- nil
 	}
-	errConsume := consumer.StartConsuming(callback)
-	assert.Nil(t, errConsume)
+
+	go func() {
+		errConsume := consumer.StartConsuming(callback)
+		assert.Nil(t, errConsume)
+	}()
 
 	testMessage1 := "message from producer 1"
 	errSend1 := producer1.Send([]byte(testMessage1))
@@ -207,59 +220,35 @@ func TestTwoProducersOneConsumer(t *testing.T) {
 	assert.Contains(t, receivedMsgs, testMessage2)
 }
 
-func TestQueueAutoDeleteWhenUnused(t *testing.T) {
-	producerName := "producerAutoDeleteTest"
-	consumerName := "consumerAutoDeleteTest"
+func TestResumeConsumerBehavior(t *testing.T) {
+	consumerName := "consumerResumeTest"
+	sourceName := "producerResumeTest"
+	url := "amqp://guest:guest@localhost:5672/"
 
-	producer, err := middleware.NewProducer(producerName, "amqp://guest:guest@localhost:5672/")
+	// Ensure no queue exists initially
+	resumed, err := middleware.ResumeConsumer(consumerName, sourceName, url)
 	assert.NoError(t, err)
-	defer producer.Close()
-
-	consumer, err := middleware.NewConsumer(consumerName, producerName, "amqp://guest:guest@localhost:5672/")
-	assert.NoError(t, err)
-
-	callback := func(msg middleware.MiddlewareMessage, done chan *middleware.MessageMiddlewareError) {
-		done <- nil
+	assert.Nil(t, resumed, "Expected ResumeConsumer to return (nil, nil) when queue does not exist")
+	if resumed == nil && err == nil {
+		println("No queue existed")
 	}
-	errConsume := consumer.StartConsuming(callback)
-	assert.Nil(t, errConsume)
 
-	//time.Sleep(10000 * time.Millisecond) // wait a bit to ensure queue is registered in RabbitMQ
+	// Create the queue via NewConsumer
+	c, err := middleware.NewConsumer(consumerName, sourceName, url)
+	assert.NoError(t, err)
 
-	errStop := consumer.StopConsuming()
-	assert.Nil(t, errStop)
-	errClose := consumer.Close()
+	// Close the channel for the created consumer; the queue should persist (auto-delete disabled)
+	errClose := c.Close()
 	assert.Nil(t, errClose)
 
-	//Close producer in case it's keeping the queue alive
-	errProducerClose := producer.Close()
-	assert.Nil(t, errProducerClose)
-
-	queueExists, err := checkQueueExists(consumerName)
+	// Now ResumeConsumer should find the existing queue and return a valid Consumer
+	resumed2, err := middleware.ResumeConsumer(consumerName, sourceName, url)
 	assert.NoError(t, err)
-	assert.False(t, queueExists, "Expected queue to be auto-deleted, but it still exists")
-}
+	assert.NotNil(t, resumed2, "Expected ResumeConsumer to return a Consumer when the queue exists")
 
-func checkQueueExists(queueName string) (bool, error) {
-	url := fmt.Sprintf("http://localhost:15672/api/queues/%%2f/%s", queueName)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return false, err
+	// Cleanup: explicitly shutdown/delete the queue
+	if resumed2 != nil {
+		shutdownErr := resumed2.Delete()
+		assert.Nil(t, shutdownErr)
 	}
-	req.SetBasicAuth("guest", "guest")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case 200:
-		return true, nil
-	case 404:
-		return false, nil
-	}
-	return false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 }

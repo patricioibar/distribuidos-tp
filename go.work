@@ -10,4 +10,5 @@ use (
 	./joiner
 	./middleware
 	./persistance
+	./bitmap
 )
