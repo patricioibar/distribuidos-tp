@@ -156,7 +156,6 @@ func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
 	}
 	defer func() {
 		consumer.Close()
-		consumer.Delete()
 	}()
 
 	ready := make(chan bool, 1)

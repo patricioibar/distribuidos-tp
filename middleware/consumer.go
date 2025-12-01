@@ -219,8 +219,6 @@ func (c *Consumer) Close() (error *MessageMiddlewareError) {
 }
 
 func (c *Consumer) Delete() (error *MessageMiddlewareError) {
-	c.StopConsuming()
-
 	var firstErr *MessageMiddlewareError
 
 	if c.channel != nil {
