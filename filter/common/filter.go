@@ -280,23 +280,23 @@ func (f *FilterWorker) Close() {
 			}
 		}
 
+		// close state manager
+		if err := f.stateManager.Close(); err != nil {
+			log.Errorf("Failed to close state manager: %v", err)
+		}
+
+		// remove state directory
+		stateDir := StateRoot + "/" + f.jobId
+		if err := os.RemoveAll(stateDir); err != nil {
+			log.Errorf("Failed to remove state directory %s: %v", stateDir, err)
+		} else {
+			log.Debugf("Removed state directory %s", stateDir)
+		}
+
 		f.removeFromMap <- f.jobId
 
 		log.Info("FilterWorker shutdown completed.")
 	})
-
-	// close state manager
-	if err := f.stateManager.Close(); err != nil {
-		log.Errorf("Failed to close state manager: %v", err)
-	}
-
-	// remove state directory
-	stateDir := StateRoot + "/" + f.jobId
-	if err := os.RemoveAll(stateDir); err != nil {
-		log.Errorf("Failed to remove state directory %s: %v", stateDir, err)
-	} else {
-		log.Debugf("Removed state directory %s", stateDir)
-	}
 }
 
 func (f *FilterWorker) handleEndSignal(payload *ic.EndSignalPayload) bool {
