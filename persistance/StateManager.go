@@ -140,6 +140,8 @@ func (sm *StateManager) Restore() error {
 			return err
 		}
 	}
+	// close iterator file handles
+	_ = walIt.Close()
 	return nil
 }
 
@@ -148,6 +150,8 @@ func (sm *StateManager) GetOperationWithSeqNumber(seqNumber uint64) (Operation, 
 	if err != nil {
 		return nil, err
 	}
+
+	defer func() { _ = walIt.Close() }()
 
 	for {
 		entry, err := walIt.Next()
