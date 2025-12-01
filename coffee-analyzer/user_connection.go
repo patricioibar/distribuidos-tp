@@ -23,6 +23,7 @@ type CoffeeAnalyzer struct {
 	jobPublisher  *middleware.Producer
 	totalWorkers  int
 	duplicateProb float64
+	monitorsCount string
 }
 
 const jobPublishingExchange = "JOB_SOURCE"
@@ -41,6 +42,7 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 		jobPublisher:  jobPublisher,
 		totalWorkers:  config.TotalWorkers,
 		duplicateProb: config.DuplicateProb,
+		monitorsCount: config.MonitorsCount,
 	}
 }
 

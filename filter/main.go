@@ -52,7 +52,9 @@ func main() {
 	removeFromMap := make(chan string, 10)
 	handleNewIncommingJob := getHandleIncommingJob(config, runningFilters, &runningFiltersLock, removeFromMap)
 
-	go communication.SendHeartBeat(config.FilterId)
+	//go communication.SendHeartBeat(config.FilterId)
+
+	go SendHeartbeatToMonitors(config)
 
 	go func() {
 		if err := jobAnnouncements.StartConsuming(handleNewIncommingJob); err != nil {
@@ -135,6 +137,15 @@ func getHandleIncommingJob(config Config, runningFilters map[string]*filter.Filt
 
 }
 
+func SendHeartbeatToMonitors(config Config) {
+	addresses, _ := communication.ResolveAddresses(config.FilterId, config.MonitorsCount)
+	t := time.NewTicker(250 * time.Millisecond)
+	for range t.C {
+		//sendToAll(conn, fmt.Sprintf("%s:%s", MSG_MONITOR, config.MonitorId), config)
+		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", "WORKER", config.FilterId))
+	}
+}
+
 func shutdownGracefully(runningFilters map[string]*filter.FilterWorker, input mw.MessageMiddleware) {
 	log.Info("Starting graceful shutdown sequence...")
 
@@ -180,6 +191,7 @@ func getConfig() Config {
 	sourceQueue := os.Getenv("SOURCE_QUEUE")
 	outputExchange := os.Getenv("OUTPUT_EXCHANGE")
 	logLevel := os.Getenv("LOG_LEVEL")
+	monitorsCountStr := os.Getenv("MONITORS_COUNT")
 	if filterType == "" || consumerName == "" || mwAddress == "" || sourceQueue == "" || outputExchange == "" {
 		log.Critical("One or more required environment variables are not set: FILTER_TYPE, CONSUMER_NAME, MW_ADDRESS, SOURCE_QUEUE, OUTPUT_EXCHANGE")
 		os.Exit(1)
@@ -189,6 +201,7 @@ func getConfig() Config {
 		log.Critical("Invalid WORKERS_COUNT value")
 		os.Exit(1)
 	}
+	monitorsCount, _ := strconv.Atoi(monitorsCountStr)
 
 	return Config{
 		FilterId:       filterId,
@@ -199,6 +212,7 @@ func getConfig() Config {
 		SourceQueue:    sourceQueue,
 		OutputExchange: outputExchange,
 		LogLevel:       logLevel,
+		MonitorsCount:  monitorsCount,
 	}
 }
 
@@ -230,4 +244,5 @@ type Config struct {
 	SourceQueue    string
 	OutputExchange string
 	LogLevel       string
+	MonitorsCount  int
 }

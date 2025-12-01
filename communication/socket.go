@@ -11,6 +11,8 @@ import (
 
 const getResponseMessage = "GET_RESPONSES"
 
+var MonitorsCount int
+
 func (s *Socket) BindAndListen(address string) error {
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
@@ -159,22 +161,49 @@ func (s *Socket) ReceiveUUID() (uuid.UUID, error) {
 	return id, nil
 }
 
-func SendHeartBeat(workerId string) {
-	//falta cerrar la conexion en caso de ctrl+c?
-	addr, _ := net.ResolveUDPAddr("udp", "monitor-1:9000")
-
-	// This creates a UDP connection you can Write() to
-	conn, _ := net.DialUDP("udp", nil, addr)
-	defer conn.Close()
-
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		msg := []byte(workerId)
-		_, err := conn.Write(msg)
-		if err != nil {
-			fmt.Println("error sending heartbeat:", err)
+func ResolveAddresses(nodeId string, monitorsCount int, addressList ...int) ([]*net.UDPAddr, error) {
+	var monitorAddresses []*net.UDPAddr
+	if len(addressList) > 0 {
+		for _, monitorIdInt := range addressList {
+			monitorId := fmt.Sprintf("monitor-%d", monitorIdInt)
+			addrStr := fmt.Sprintf("%s:9000", monitorId)
+			addr, _ := net.ResolveUDPAddr("udp", addrStr)
+			monitorAddresses = append(monitorAddresses, addr)
 		}
+		fmt.Printf("%v\n", monitorAddresses)
+	} else {
+		for i := 1; i <= monitorsCount; i++ {
+			monitorId := fmt.Sprintf("monitor-%d", i)
+			if monitorId == nodeId {
+				continue
+			}
+			addrStr := fmt.Sprintf("%s:9000", monitorId)
+			//fmt.Printf("sending message to monitor %s\n", addrStr)
+			addr, _ := net.ResolveUDPAddr("udp", addrStr)
+			monitorAddresses = append(monitorAddresses, addr)
+		}
+	}
+
+	//fmt.Printf("%v\n", monitorAddresses)
+	return monitorAddresses, nil
+}
+
+func SendMessageToMonitors(addresses []*net.UDPAddr, msg string) {
+	//falta cerrar la conexion en caso de ctrl+c?
+	//fmt.Printf("MONITORS COUNT: %d\n", monitorsCount)
+	//addr, _ := net.ResolveUDPAddr("udp", "monitor-1:9000")
+
+	for _, addr := range addresses {
+		conn, err := net.DialUDP("udp", nil, addr)
+		if err != nil {
+			fmt.Println("error dialing UDP:", err)
+			continue
+		}
+		msg := []byte(msg)
+		_, err = conn.Write(msg)
+		if err != nil {
+			fmt.Println("error sending message:", err)
+		}
+		conn.Close()
 	}
 }
