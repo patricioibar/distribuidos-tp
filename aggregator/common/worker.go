@@ -144,7 +144,7 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 			"key_columns: %v, aggregations: %v, total groups: %d",
 			dataInfo.KeyColumns, dataInfo.Aggregations, len(dataInfo.Data),
 		)
-		log.Debugf("datainfo data: %v", dataInfo.Data)
+		// log.Debugf("datainfo data: %v", dataInfo.Data)
 
 		aggsColnames := aggsAsColNames(dataInfo.Aggregations)
 
@@ -188,7 +188,7 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 					formatedRow[len(outputKeyColumns)+j] = nil
 				}
 			}
-			log.Debugf("Formatted row: %v", formatedRow)
+			// log.Debugf("Formatted row: %v", formatedRow)
 			dataBatch.Data = append(dataBatch.Data, formatedRow)
 			i++
 		}

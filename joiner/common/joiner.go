@@ -66,7 +66,7 @@ func (jw *JoinerWorker) innerStart() {
 		return
 	}
 	log.Debugf("%s received all right input, starting left input", jw.Config.WorkerId)
-	log.Debugf("Right cache: %v", jw.rightCache)
+	// log.Debugf("Right cache: %v", jw.rightCache)
 	// blocks until left input queue is closed
 	if err := jw.leftInput.StartConsuming(jw.leftCallback()); err != nil {
 		log.Errorf("Failed to start consuming left input messages for job %s: %v", jw.jobID, err)
