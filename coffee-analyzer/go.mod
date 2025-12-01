@@ -15,7 +15,10 @@ require (
 	github.com/spf13/viper v1.21.0
 )
 
-require github.com/google/uuid v1.6.0
+require (
+	github.com/google/uuid v1.6.0
+	github.com/patricioibar/distribuidos-tp/bitmap v0.0.0-20251130061411-2db4766db800
+)
 
 require (
 	communication v0.0.0-00010101000000-000000000000
