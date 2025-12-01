@@ -29,7 +29,7 @@ func (aw *AggregatorWorker) reducerMessageCallback() mw.OnMessageCallback {
 			aw.updateProcessedSeqHandlingDuplicates(p)
 
 			if len(aw.aggregatorsDone) == aw.Config.WorkersCount {
-				// All aggregators have sent their sequence sets, we can send the processed batches
+				log.Debugf("All aggregators have sent their sequence sets, sending processed batches")
 				aw.reducerPassToNextStage()
 			}
 
@@ -53,11 +53,13 @@ func (aw *AggregatorWorker) reducerPassToNextStage() {
 	// to be consistent with other workers, remove all processed batches up to nextSeq
 	// and notify those batches have been processed
 	aw.processedBatches.RemoveRange(0, aw.nextBatchToSend)
+	log.Debug("Sending processed batches")
 	aw.sendProcessedBatches()
 	eofMsg, _ := ic.NewEndSignal([]string{}, aw.nextBatchToSend).Marshal()
 	if err := aw.output.Send(eofMsg); err != nil {
 		log.Errorf("Failed to send end signal message: %v", err)
 	}
+	log.Debug("Deleting input")
 	aw.input.Delete()
 }
 

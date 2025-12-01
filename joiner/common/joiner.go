@@ -246,9 +246,6 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatchPayload) [][]interface{} {
 			}
 		}
 	}
-	if len(joinedRows) == 0 {
-		log.Debugf("No joined rows found for left batch SeqNum %d", batch.SeqNum)
-	}
 	return joinedRows
 }
 

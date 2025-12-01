@@ -225,7 +225,7 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload) {
 		}
 
 		if hasNil(groupByIndexes, row) || hasNil(aggIndexesToSlice(aggIndexes, aw.Config.Aggregations), row) {
-			log.Debugf("skipping row with nil: %v", row)
+			// log.Debugf("skipping row with nil: %v", row)
 			continue
 		}
 
@@ -235,7 +235,7 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload) {
 			aw.reducedData[key] = make([]a.Aggregation, len(aw.Config.Aggregations))
 			for i, agg := range aw.Config.Aggregations {
 				aw.reducedData[key][i] = a.NewAggregation(agg.Func)
-				log.Debugf("Initialized aggregation %s for key %s", agg.Func, key)
+				// log.Debugf("Initialized aggregation %s for key %s", agg.Func, key)
 			}
 		}
 

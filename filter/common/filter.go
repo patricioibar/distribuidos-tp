@@ -88,12 +88,14 @@ func (f *FilterWorker) getFilterFunction(filterType string) (mw.OnMessageCallbac
 
 		case *ic.SequenceSetPayload:
 			f.totallyFiltered.Or(p.Sequences.Bitmap)
+			done <- nil
 
 		case *ic.EndSignalPayload:
 			shouldAck := f.handleEndSignal(p)
 			if shouldAck {
 				done <- nil
 			} else {
+				log.Warningf("Duplicated End Signal")
 				done <- &mw.MessageMiddlewareError{Code: 0, Msg: "end signal contains this worker already"}
 				// sleep?
 			}
@@ -114,15 +116,17 @@ func (f *FilterWorker) filterBatch(p *ic.RowsBatchPayload, filterFunction func(*
 
 	f.seenBatches.Add(p.SeqNum)
 	if len(p.Rows) == 0 {
+		f.totallyFiltered.Add(p.SeqNum)
 		return
 	}
 	filteredBatch, err := filterFunction(p)
 	if err != nil {
 		log.Errorf("Failed to filter batch: %v", err)
+		f.totallyFiltered.Add(p.SeqNum)
 		return
 	}
 	filteredBatchPayload := filteredBatch.Payload.(*ic.RowsBatchPayload)
-	log.Debugf("Filter %s processed batch: %d input rows -> %d output rows", f.filterId, len(p.Rows), len(filteredBatchPayload.Rows))
+	// log.Debugf("Filter %s processed batch: %d input rows -> %d output rows", f.filterId, len(p.Rows), len(filteredBatchPayload.Rows))
 
 	if len(filteredBatchPayload.Rows) > 0 {
 		batchBytes, err := filteredBatch.Marshal()
@@ -134,7 +138,7 @@ func (f *FilterWorker) filterBatch(p *ic.RowsBatchPayload, filterFunction func(*
 		}
 
 	} else {
-		log.Debugf("Filter %s: No rows passed the filter criteria", f.filterId)
+		// log.Debugf("Filter %s: No rows passed the filter criteria", f.filterId)
 		f.totallyFiltered.Add(p.SeqNum)
 	}
 }
@@ -198,11 +202,15 @@ func (f *FilterWorker) handleEndSignal(payload *ic.EndSignalPayload) bool {
 	if len(payload.WorkersDone) == f.workersCount {
 		log.Info("All workers done. Sending end signal to next stage and deleting input.")
 		endSignal := ic.NewEndSignal(nil, payload.SeqNum)
-		batchBytes, _ := endSignal.Marshal()
+		batchBytes, err := endSignal.Marshal()
+		if err != nil {
+			log.Errorf("Failed to marshal end signal message: %v", err)
+		}
 		if err := f.output.Send(batchBytes); err != nil {
 			log.Errorf("Failed to propagate end signal message: %v", err)
 		}
 		f.input.Delete()
+		log.Debug("Input deleted.")
 		return true
 	}
 
