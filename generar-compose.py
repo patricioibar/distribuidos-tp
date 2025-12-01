@@ -70,7 +70,7 @@ def add_itemsAggregator_service(nodes: int) -> str:
         result += aggregator_template
     return result
 
-def add_itemsReducer_service() -> str:
+def add_itemsReducer_service(nodes: int) -> str:
     reducer_template = r'''
   items-reducer:
     image: aggregator:latest
@@ -80,7 +80,7 @@ def add_itemsReducer_service() -> str:
       dockerfile: aggregator/Dockerfile
     environment:
       WORKER_ID: "items-reducer"
-      WORKERS_COUNT: 1
+      WORKERS_COUNT: ''' + str(nodes) + r'''
       MIDDLEWARE_ADDRESS: "''' + MIDDLEWARE_ADDRESS + r'''"
       GROUP_BY: "[\"year-month\",\"item_id\"]"
       AGGREGATIONS: "[{\"col\":\"sum_subtotal\",\"func\":\"sum\"},{\"col\":\"sum_quantity\",\"func\":\"sum\"}]"
@@ -158,7 +158,7 @@ def add_tpvAggregator_service(nodes: int) -> str:
         result += aggregator_template
     return result
 
-def add_tpvReducer_service() -> str:
+def add_tpvReducer_service(nodes: int) -> str:
     reducer_template = r'''
   tpv-reducer:
     image: aggregator:latest
@@ -168,7 +168,7 @@ def add_tpvReducer_service() -> str:
       dockerfile: aggregator/Dockerfile
     environment:
       WORKER_ID: "tpv-reducer"
-      WORKERS_COUNT: 1
+      WORKERS_COUNT: ''' + str(nodes) + r'''
       MIDDLEWARE_ADDRESS: "''' + MIDDLEWARE_ADDRESS + r'''"
       GROUP_BY: "[\"year\",\"semester\",\"store_id\"]"
       AGGREGATIONS: "[{\"col\":\"sum_final_amount\",\"func\":\"sum\"}]"
@@ -248,7 +248,7 @@ def add_topUserAggregator_service(nodes: int) -> str:
         result += aggregator_template
     return result
 
-def add_topUserReducer_service() -> str:
+def add_topUserReducer_service(nodes: int) -> str:
     reducer_template = r'''
   topuser-reducer:
     image: aggregator:latest
@@ -258,7 +258,7 @@ def add_topUserReducer_service() -> str:
       dockerfile: aggregator/Dockerfile
     environment:
       WORKER_ID: "topuser-reducer"
-      WORKERS_COUNT: 1
+      WORKERS_COUNT: ''' + str(nodes) + r'''
       MIDDLEWARE_ADDRESS: "''' + MIDDLEWARE_ADDRESS + r'''"
       GROUP_BY: "[\"store_id\",\"user_id\"]"
       AGGREGATIONS: "[{\"col\":\"count_transaction_id\",\"func\":\"sum\"}]"
@@ -446,7 +446,8 @@ def generate_compose_file(fileName: str, nodes_count: dict):
         num_tpv_aggregators +
         num_tpv_joiners +
         num_topuser_aggregators +
-        num_topuser_birthdate_joiners
+        num_topuser_birthdate_joiners +
+        5  # For reducers and other single services
     )
 
     compose_content = f'''
@@ -459,13 +460,13 @@ services:
 {add_filter_service(num_filter_amount, FilterType.TbyAmount, "filtered-transactions-yearhour", "query1_sink")}
 {add_filter_service(num_filter_items, FilterType.TIbyYear, "transaction_items", "filtered-years-items")}
 {add_itemsAggregator_service(num_items_aggregators)}
-{add_itemsReducer_service()}
+{add_itemsReducer_service(num_items_aggregators)}
 {add_itemNames_joiner()}
 {add_tpvAggregator_service(num_tpv_aggregators)}
-{add_tpvReducer_service()}
+{add_tpvReducer_service(num_tpv_aggregators)}
 {add_tpv_joiner(num_tpv_joiners)}
 {add_topUserAggregator_service(num_topuser_aggregators)}
-{add_topUserReducer_service()}
+{add_topUserReducer_service(num_topuser_aggregators)}
 {add_topUserBirthdate_joiner(num_topuser_birthdate_joiners)}
 {add_topUserStoreName_joiner()}
 {add_volumes_networks()}
@@ -477,14 +478,14 @@ services:
 nodes_count = {
     "filter-years": 3,
     "filter-hours": 3,
-    "filter-amount": 2,
+    "filter-amount": 3,
     "filter-items": 3,
     "items-aggregator": 3,
     "tpv-aggregator": 3,
     "tpv-joiner": 3,
     "topuser-aggregator": 3,
-    "topuser-birthdate-joiner": 5,
-    "analyst": 3
+    "topuser-birthdate-joiner": 3,
+    "analyst": 1
 }
 
 if __name__ == "__main__":
