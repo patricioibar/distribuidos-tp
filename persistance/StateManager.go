@@ -56,12 +56,6 @@ func NewStateManager(state State, stateLog StateLog, snapshotPeriod int) (*State
 		stateLog:          stateLog,
 		logsSinceSnapshot: 0,
 	}
-
-	snapshotData, err := sm.state.Serialize()
-	if err != nil {
-		return nil, err
-	}
-	sm.stateLog.WriteSnapshot(snapshotData)
 	return sm, nil
 }
 
