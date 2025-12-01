@@ -107,6 +107,7 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	json.Unmarshal(headerJson, &header)
 	log.Infof("Received header: %v", header)
 	var seqNumber uint64 = 0
+	duplicated := 0
 	for {
 		data, err := s.ReadBatch()
 		if err != nil {
@@ -122,6 +123,7 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 		// With probability duplicateProb, send a duplicate
 		if ca.duplicateProb > 0.0 {
 			if rand.Float64() < ca.duplicateProb {
+				duplicated++
 				producer.Send(rowsBatchMarshaled)
 			}
 		}
@@ -130,8 +132,17 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	endSignal := innercommunication.NewEndSignal(nil, seqNumber)
 	endSignalMarshaled, _ := endSignal.Marshal()
 	producer.Send(endSignalMarshaled)
+	if ca.duplicateProb > 0.0 {
+		// With probability duplicateProb, send a duplicate end signal
+		if rand.Float64() < ca.duplicateProb {
+			producer.Send(endSignalMarshaled)
+		}
+	}
 	producer.Close()
 	log.Infof("Finished receiving table: %v", table)
+	if duplicated > 0 {
+		log.Infof("Sent %d duplicated batches for table %v", duplicated, table)
+	}
 }
 
 func (ca *CoffeeAnalyzer) handleNewJobRequest(s *communication.Socket) {

@@ -29,7 +29,7 @@ var requiredFields = []string{
 
 // field: default value
 var optionalFields = map[string]interface{}{
-	"log-level": "INFO",
+	"log-level":      "INFO",
 	"duplicate-prob": 0.0,
 }
 
@@ -45,8 +45,16 @@ func InitConfig() (*Config, error) {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 
+	// Bind required fields to environment variables so env overrides config file
 	for _, field := range requiredFields {
-		v.BindEnv(field)
+		_ = v.BindEnv(field)
+	}
+
+	// Set defaults and bind optional fields as well so environment variables
+	// (e.g. DUPLICATE_PROB) are recognized even if not present in the config file.
+	for optField, defaultValue := range optionalFields {
+		v.SetDefault(optField, defaultValue)
+		_ = v.BindEnv(optField)
 	}
 
 	if err := v.ReadInConfig(); err != nil {
@@ -70,12 +78,7 @@ func InitConfig() (*Config, error) {
 		v.Set("queries", queries)
 	}
 
-	// Set defaults for optional fields if not set
-	for optField, defaultValue := range optionalFields {
-		if !v.IsSet(optField) {
-			v.Set(optField, defaultValue)
-		}
-	}
+	// (defaults already registered via v.SetDefault and env bindings above)
 
 	var config Config
 	if err := v.Unmarshal(&config); err != nil {
