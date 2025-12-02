@@ -413,6 +413,19 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 			if len(p.Rows) != len(expectedRows) {
 				t.Errorf("Expected %d rows, got %d", len(expectedRows), len(p.Rows))
 			}
+			var sum_idx int = -1
+			var count_idx int = -1
+			for i, col := range p.ColumnNames {
+				if col == "sum_value" {
+					sum_idx = i
+				}
+				if col == "count_category" {
+					count_idx = i
+				}
+			}
+			if sum_idx == -1 || count_idx == -1 {
+				t.Errorf("Expected columns 'value_sum' and 'category_count' in output, got %v", p.ColumnNames)
+			}
 			for _, row := range p.Rows {
 				category := row[0].(string)
 				count := int(row[1].(float64)) // JSON numbers are always float64
