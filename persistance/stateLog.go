@@ -213,6 +213,9 @@ func (l *stateLog) GetLogsIterator() (EntryIterator, error) {
 	if WALPaths == nil {
 		return nil, fmt.Errorf("no WAL files found")
 	}
+	if len(WALPaths) == 0 {
+		return nil, fmt.Errorf("no WAL files found")
+	}
 	sort.Strings(WALPaths)
 	return newWALIterator(WALPaths), nil
 }
