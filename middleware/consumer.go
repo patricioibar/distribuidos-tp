@@ -31,12 +31,12 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string, 
 	}
 
 	q, err := ch.QueueDeclare(
-		consumerName+key, // name
-		false,            // durable
-		false,            // delete when unused (no auto-delete)
-		false,            // exclusive
-		false,            // no-wait
-		nil,              // arguments
+		key+"###"+consumerName, // name
+		false,                  // durable
+		false,                  // delete when unused (no auto-delete)
+		false,                  // exclusive
+		false,                  // no-wait
+		nil,                    // arguments
 	)
 	if err != nil {
 		_ = ch.Close()

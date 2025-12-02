@@ -2,6 +2,7 @@ package common
 
 import (
 	pers "aggregator/common/persistence"
+	"aggregator/common/rollback"
 	"slices"
 
 	"github.com/patricioibar/distribuidos-tp/bitmap"
@@ -47,7 +48,7 @@ func (aw *AggregatorWorker) reducerMessageCallback() mw.OnMessageCallback {
 			log.Debugf("Reducer %s has %d/%d aggregators done", aw.Config.WorkerId, len(aw.aggregatorsDone()), aw.Config.WorkersCount)
 			if len(aw.aggregatorsDone()) == aw.Config.WorkersCount {
 				aw.rollbackDuplicatedData()
-				log.Debugf("All aggregators have sent their sequence sets, sending processed batches")
+				log.Debugf("All aggregators data has been successfully reduced, sending processed batches")
 				aw.reducerPassToNextStage()
 			}
 
@@ -129,14 +130,107 @@ func (aw *AggregatorWorker) reduceAggregatedData(p *ic.AggregatedDataPayload) {
 }
 
 func (aw *AggregatorWorker) rollbackDuplicatedData() {
-	rollbackNeeded := false
+	recoveryQueueDeclared := false
+	var duplicatedMessages uint64 = 0
+	var recoveryResponses *mw.Consumer
+	var err error
 	for aggregatorID, duplicatedBatches := range aw.state.GetState().(*pers.PersistentState).DuplicatedBatches {
 		if duplicatedBatches.GetCardinality() > 0 {
-			log.Infof("Rolling back %d duplicated batches from aggregator %s", duplicatedBatches.GetCardinality(), aggregatorID)
-			rollbackNeeded = true
+			log.Infof("Rolling back %d duplicated batches from aggregator %s for job %s", duplicatedBatches.GetCardinality(), aggregatorID, aw.jobID)
+			if !recoveryQueueDeclared {
+				recoveryResponses, err = mw.NewConsumer(
+					aw.Config.WorkerId,
+					rollback.RecoveryResponsesSourceName(aw.Config.WorkerId),
+					aw.Config.MiddlewareAddress,
+					aw.jobID,
+				)
+				if err != nil {
+					log.Errorf("Failed to create recovery queue consumer for job %s: %v.\nDuplicated batches cannot be rolled back", aw.jobID, err)
+					return
+				}
+				recoveryQueueDeclared = true
+			}
+			duplicatedMessages += duplicatedBatches.GetCardinality()
+			rollback.AskForLogsFromDuplicatedBatches(
+				aw.Config.WorkerId,
+				aw.Config.MiddlewareAddress,
+				aw.jobID,
+				duplicatedBatches,
+			)
 		}
 	}
-	if rollbackNeeded {
-		panic("TO DO: implement rollback for duplicated data in reducer")
+	if !recoveryQueueDeclared {
+		// no duplicated data to rollback
+		rollback.SendAllOkToEveryAggregator(
+			aw.Config.WorkerId,
+			aw.Config.MiddlewareAddress,
+			aw.jobID,
+			aw.aggregatorsDone(),
+		)
+		return
 	}
+	log.Infof("Waiting for recovery responses for job %s", aw.jobID)
+	aw.receiveRecoveryResponses(recoveryResponses, duplicatedMessages)
+}
+
+func (aw *AggregatorWorker) duplicatedBatchesFor(aggregatorID string) *bitmap.Bitmap {
+	persState, _ := aw.state.GetState().(*pers.PersistentState)
+	return persState.DuplicatedBatchesFor(aggregatorID)
+}
+
+func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consumer, duplicatedMessages uint64) {
+	callback := func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		defer func() { done <- nil }()
+		// log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
+		jsonStr := string(consumeChannel.Body)
+		var receivedMessage rollback.Message
+		if err := receivedMessage.Unmarshal([]byte(jsonStr)); err != nil {
+			log.Errorf("Failed to unmarshal message: %v", err)
+
+			return
+		}
+
+		switch p := receivedMessage.Payload.(type) {
+		case *rollback.RecoveryResponsePayload:
+			if !aw.duplicatedBatchesFor(p.WorkerID).Contains(p.SequenceNumber) {
+				// duplicated recovery response
+				return
+			}
+
+			operation := pers.NewReceiveAggregatorBatchOp(p.SequenceNumber, p.WorkerID, p.OperationData)
+			if err := aw.state.Log(operation); err != nil {
+				log.Errorf("Failed to log recovered batch %d from worker %s for job %s: %v", p.SequenceNumber, p.WorkerID, aw.jobID, err)
+			}
+
+			if aw.duplicatedBatchesFor(p.WorkerID).GetCardinality() == 0 {
+				log.Infof("All duplicated batches recovered from worker %s for job %s", p.WorkerID, aw.jobID)
+				rollback.SendAllOkToWorker(
+					aw.Config.WorkerId,
+					aw.Config.MiddlewareAddress,
+					aw.jobID,
+					p.WorkerID,
+				)
+				return
+			}
+
+			duplicatedMessages--
+			if duplicatedMessages == 0 {
+				log.Infof("All recovery responses received for job %s", aw.jobID)
+				rollback.SendAllOkToEveryAggregator(
+					aw.Config.WorkerId,
+					aw.Config.MiddlewareAddress,
+					aw.jobID,
+					aw.aggregatorsDone(),
+				)
+				recoveryResponses.Delete()
+			}
+
+		default:
+			log.Errorf("Unexpected message type: %s", receivedMessage.Type)
+		}
+	}
+
+	// blocks until queue is deleted
+	recoveryResponses.StartConsuming(callback)
+	recoveryResponses.Close()
 }
