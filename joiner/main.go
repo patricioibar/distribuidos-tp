@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 
@@ -55,6 +56,9 @@ func main() {
 	jobsMap := make(map[string]*common.JoinerWorker)
 	jobsMapLock := sync.Mutex{}
 	removeFromMap := make(chan string, 10)
+
+	go recoverPreviousJobs(*config, removeFromMap, &jobsMapLock, jobsMap)
+
 	incomingJobs, err := mw.NewConsumer(incomingJobsSource+"_"+config.WorkerId, incomingJobsSource, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
@@ -130,7 +134,7 @@ func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.Joine
 		jobsMap[jobStr] = joiner
 		jobsMapLock.Unlock()
 
-		log.Infof("Starting joiner %s...", config.WorkerId)
+		log.Infof("Starting joiner %s for job %s...", config.WorkerId, jobStr)
 		go joiner.Start()
 
 		ready, err := mw.NewProducer(jobStr, config.MiddlewareAddress)
@@ -144,4 +148,59 @@ func initializeJoinerJob(config *common.Config, jobsMap map[string]*common.Joine
 
 		done <- nil
 	}
+}
+
+func recoverPreviousJobs(config common.Config, removeFromMap chan string, jobsMapLock *sync.Mutex, jobsMap map[string]*common.JoinerWorker) bool {
+	entries, err := os.ReadDir(common.StateRoot)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Errorf("Failed to read state dir %s: %v", common.StateRoot, err)
+		}
+		return true
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		jobID := e.Name()
+
+		// All workers receive copies of the messages from the right input
+		uniqueName := config.RightInputName + "-" + config.WorkerId
+		rightInput, _ := mw.NewConsumer(uniqueName, config.RightInputName, config.MiddlewareAddress, jobID)
+		// if error != nil then all right input was already received and persisted
+
+		// Try to resume left consumer for this job. ResumeConsumer returns (nil, nil)
+		// when the queue doesn't exist anymore.
+		leftName := config.LeftInputName + "-" + config.QueryName
+		leftInput, err := mw.ResumeConsumer(leftName, config.LeftInputName, config.MiddlewareAddress, jobID)
+		if err != nil {
+			log.Errorf("ResumeConsumer error for job %s: %v", jobID, err)
+			continue
+		}
+		if leftInput == nil {
+			// No queue to resume: remove stale persisted state
+			path := filepath.Join(common.StateRoot, jobID)
+			if err := os.RemoveAll(path); err != nil {
+				log.Errorf("Failed to remove stale state for job %s: %v", jobID, err)
+			} else {
+				log.Infof("Removed stale state for job %s", jobID)
+			}
+			continue
+		}
+
+		output, err := mw.NewProducer(config.OutputName, config.MiddlewareAddress, jobID)
+		if err != nil {
+			log.Fatalf("Failed to create output producer: %v", err)
+		}
+
+		joiner := common.NewJoinerWorker(&config, leftInput, rightInput, output, jobID, removeFromMap)
+
+		jobsMapLock.Lock()
+		jobsMap[jobID] = joiner
+		jobsMapLock.Unlock()
+
+		log.Infof("Starting joiner %s for job %s...", config.WorkerId, jobID)
+		go joiner.Start()
+	}
+	return false
 }

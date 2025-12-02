@@ -102,16 +102,6 @@ func (js *JoinerState) Apply(op pers.Operation) error {
 				return err
 			}
 			js.RightCache = tc
-		} else {
-			// verify columns match
-			if len(js.RightCache.Columns) != len(aro.Columns) {
-				return fmt.Errorf("right cache columns mismatch: existing %v vs op %v", js.RightCache.Columns, aro.Columns)
-			}
-			for i := range aro.Columns {
-				if js.RightCache.Columns[i] != aro.Columns[i] {
-					return fmt.Errorf("right cache columns mismatch at %d: %s != %s", i, js.RightCache.Columns[i], aro.Columns[i])
-				}
-			}
 		}
 		// append rows
 		for _, row := range aro.Rows {
@@ -197,11 +187,6 @@ func decodeAddBitmapOpJoiner(data []byte) (pers.Operation, error) {
 	return &AddBitmapOpJoiner{ID: data[0], seq: seq, Target: target, Values: values}, nil
 }
 
-func init() {
-	// register our operation decoder with the persistance package
-	pers.RegisterOperation(addBitmapTypeIDJoiner, func(b []byte) (pers.Operation, error) { return decodeAddBitmapOpJoiner(b) })
-}
-
 // ------------------------------------------------------------------
 // Operation to create/populate the RightCache (columns + rows)
 // ------------------------------------------------------------------
@@ -269,6 +254,7 @@ func decodeAddRightCacheOp(data []byte) (pers.Operation, error) {
 }
 
 func init() {
-	// register right-cache op decoder
+	// register operations
+	pers.RegisterOperation(addBitmapTypeIDJoiner, func(b []byte) (pers.Operation, error) { return decodeAddBitmapOpJoiner(b) })
 	pers.RegisterOperation(addRightCacheTypeID, func(b []byte) (pers.Operation, error) { return decodeAddRightCacheOp(b) })
 }
