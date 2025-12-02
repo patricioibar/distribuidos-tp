@@ -233,6 +233,7 @@ func (s *PersistentState) addAggregatorDoneOp(opp *AddAggregatorDoneOp) error {
 	duplicatedBatches := bitmap.And(s.AggregatedBatches, opp.Seqs)
 	s.AggregatedBatches.Or(opp.Seqs)
 	s.DuplicatedBatches[opp.AggregatorDone] = duplicatedBatches
+	s.AggregatorsDone = append(s.AggregatorsDone, opp.AggregatorDone)
 	return nil
 }
 

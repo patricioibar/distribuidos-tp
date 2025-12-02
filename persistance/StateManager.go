@@ -54,6 +54,7 @@ func NewStateManager(state State, stateLog StateLog, snapshotPeriod int) (*State
 	sm := &StateManager{
 		state:             state,
 		stateLog:          stateLog,
+		snapshotPeriod:    snapshotPeriod,
 		logsSinceSnapshot: 0,
 	}
 	return sm, nil
@@ -70,6 +71,10 @@ func (sm *StateManager) Log(op Operation) error {
 		return err
 	}
 	err = op.ApplyTo(sm.state)
+	if err != nil {
+		return err
+	}
+	err = sm.stateLog.Commit()
 	if err != nil {
 		return err
 	}

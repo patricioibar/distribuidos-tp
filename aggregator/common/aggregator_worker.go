@@ -1,6 +1,7 @@
 package common
 
 import (
+	pers "aggregator/common/persistence"
 	"slices"
 	"sync"
 
@@ -27,7 +28,7 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 			done <- nil
 
 		case *ic.SequenceSetPayload:
-			intersection := bitmap.And(aw.processedBatches, p.Sequences.Bitmap)
+			intersection := bitmap.And(aw.processedBatches(), p.Sequences.Bitmap)
 			if intersection.GetCardinality() != 0 {
 				log.Warningf(
 					"%s received duplicated data for job %s! Received %d duplicated sequence numbers: %s",
@@ -35,7 +36,13 @@ func (aw *AggregatorWorker) aggregatorMessageCallback() mw.OnMessageCallback {
 				)
 			}
 			// these are batches without data, just marking as processed
-			aw.processedBatches.Or(p.Sequences.Bitmap)
+			if p.Sequences.Bitmap.GetCardinality() > 0 {
+				seq := p.Sequences.Bitmap.Maximum()
+				op := pers.NewAddEmptyBatchesOp(seq, p.Sequences.Bitmap)
+				if err := aw.state.Log(op); err != nil {
+					log.Errorf("Failed to mark batch %d as empty: %v", seq, err)
+				}
+			}
 			done <- nil
 
 		case *ic.EndSignalPayload:
@@ -63,7 +70,7 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, se
 		retainedData := aw.dataRetainer.RetainData(
 			aw.Config.GroupBy,
 			aw.Config.Aggregations,
-			aw.reducedData,
+			aw.aggregatedData(),
 		)
 		aw.sendRetainedData(retainedData)
 		aw.sendProcessedBatches()
@@ -73,7 +80,7 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, se
 }
 
 func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload) {
-	if aw.processedBatches.Contains(p.SeqNum) {
+	if aw.processedBatches().Contains(p.SeqNum) {
 		log.Warningf(
 			"%s received duplicated data for job %s! Sequence number: %d. Ignoring batch.",
 			aw.Config.WorkerId, aw.jobID, p.SeqNum,
@@ -81,10 +88,19 @@ func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload) {
 		return
 	}
 
-	if len(p.Rows) != 0 {
-		aw.aggregateBatch(p)
+	if len(p.Rows) == 0 {
+		bm := bitmap.New()
+		bm.Add(p.SeqNum)
+		op := pers.NewAddEmptyBatchesOp(p.SeqNum, bm)
+		if err := aw.state.Log(op); err != nil {
+			log.Errorf("Failed to mark batch %d as empty: %v", p.SeqNum, err)
+			return
+		}
+	} else {
+		// Aggregate batch data and persist state
+		// also saves p.SeqNum as processed
+		aw.aggregateBatch(p, aw.Config.WorkerId)
 	}
-	aw.processedBatches.Add(p.SeqNum)
 }
 
 func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) {

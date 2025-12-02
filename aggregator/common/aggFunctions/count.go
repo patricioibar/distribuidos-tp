@@ -1,5 +1,7 @@
 package aggfunctions
 
+import "fmt"
+
 func NewCountAggregation() *CountAggregation {
 	return &CountAggregation{count: 0}
 }
@@ -16,4 +18,18 @@ func (c *CountAggregation) Add(value interface{}) Aggregation {
 
 func (c *CountAggregation) Result() interface{} {
 	return c.count
+}
+
+func (c *CountAggregation) Set(value interface{}) {
+	switch v := value.(type) {
+	case int:
+		c.count = v
+	default:
+		// try parse to int
+		var parsed int
+		_, err := fmt.Sscanf(fmt.Sprintf("%v", value), "%d", &parsed)
+		if err == nil {
+			c.count = parsed
+		}
+	}
 }

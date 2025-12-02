@@ -3,6 +3,7 @@ package common
 import (
 	a "aggregator/common/aggFunctions"
 	dr "aggregator/common/dataRetainer"
+	p "aggregator/common/persistence"
 	"encoding/json"
 	"sync"
 
@@ -10,26 +11,20 @@ import (
 	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
+	"github.com/patricioibar/distribuidos-tp/persistance"
 )
 
 var log = logging.MustGetLogger("log")
 
 type AggregatorWorker struct {
-	Config   *Config
-	input    mw.MessageMiddleware
-	output   mw.MessageMiddleware
-	callback mw.OnMessageCallback
-	jobID    string
+	Config       *Config
+	input        mw.MessageMiddleware
+	output       mw.MessageMiddleware
+	callback     mw.OnMessageCallback
+	dataRetainer dr.DataRetainer
+	jobID        string
 
-	// Aggregated data
-	reducedData      map[string][]a.Aggregation
-	dataRetainer     dr.DataRetainer
-	processedBatches *bitmap.Bitmap
-	nextBatchToSend  uint64
-
-	// Reducer specific fields
-	rcvedAggData    map[string]*bitmap.Bitmap
-	aggregatorsDone []string
+	state *persistance.StateManager
 
 	// Closing synchronization
 	removeFromMap chan string
@@ -44,26 +39,24 @@ func NewAggregatorWorker(
 	removeFromMap chan string,
 	nextBatchSeq uint64,
 ) *AggregatorWorker {
-	reducedData := make(map[string][]a.Aggregation)
+	sm := p.InitStateManager(jobID)
+	if sm == nil {
+		log.Errorf("StateManager not initialized for job %s", jobID)
+		return nil
+	}
 	aggregator := AggregatorWorker{
-		Config:           config,
-		input:            input,
-		output:           output,
-		reducedData:      reducedData,
-		dataRetainer:     dr.NewDataRetainer(config.Retainings),
-		processedBatches: bitmap.New(),
-		removeFromMap:    removeFromMap,
-		jobID:            jobID,
-		closeOnce:        sync.Once{},
-		rcvedAggData:     nil,
-		aggregatorsDone:  nil,
-		nextBatchToSend:  nextBatchSeq,
+		Config:        config,
+		input:         input,
+		output:        output,
+		dataRetainer:  dr.NewDataRetainer(config.Retainings),
+		removeFromMap: removeFromMap,
+		jobID:         jobID,
+		closeOnce:     sync.Once{},
+		state:         sm,
 	}
 
 	if config.IsReducer {
 		aggregator.callback = aggregator.reducerMessageCallback()
-		aggregator.rcvedAggData = make(map[string]*bitmap.Bitmap)
-		aggregator.aggregatorsDone = make([]string, 0)
 	} else {
 		aggregator.callback = aggregator.aggregatorMessageCallback()
 	}
@@ -94,8 +87,42 @@ func (aw *AggregatorWorker) Close() {
 	})
 }
 
+func (aw *AggregatorWorker) processedBatches() *bitmap.Bitmap {
+	persState, _ := aw.state.GetState().(*p.PersistentState)
+	return persState.AggregatedBatches
+}
+
+func (aw *AggregatorWorker) emptyBatches() *bitmap.Bitmap {
+	persState, _ := aw.state.GetState().(*p.PersistentState)
+	return persState.EmptyBatches
+}
+
+func (aw *AggregatorWorker) aggregatedData() map[string][]a.Aggregation {
+	persState, _ := aw.state.GetState().(*p.PersistentState)
+	data := persState.AggregatedData
+	formatedData := make(map[string][]a.Aggregation)
+	for key, aggInterfaces := range data {
+		aggs := make([]a.Aggregation, len(aggInterfaces))
+		for i, aggInterface := range aggInterfaces {
+			if i >= len(aw.Config.Aggregations) {
+				log.Errorf("Mismatch in number of aggregations for key %s: expected at least %d, got %d", key, i+1, len(aw.Config.Aggregations))
+				continue
+			}
+			agg := a.NewAggregation(aw.Config.Aggregations[i].Func)
+			agg.Set(aggInterface)
+			aggs[i] = agg
+
+		}
+		formatedData[key] = aggs
+	}
+	return formatedData
+}
+
 func (aw *AggregatorWorker) sendProcessedBatches() {
-	seqSetMsg := ic.NewSequenceSet(aw.Config.WorkerId, aw.processedBatches)
+	batches := bitmap.New()
+	batches.Or(aw.processedBatches())
+	batches.Or(aw.emptyBatches())
+	seqSetMsg := ic.NewSequenceSet(aw.Config.WorkerId, batches)
 	seqSetBytes, err := seqSetMsg.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal sequence set message: %v", err)
@@ -104,15 +131,9 @@ func (aw *AggregatorWorker) sendProcessedBatches() {
 	if err := aw.output.Send(seqSetBytes); err != nil {
 		log.Errorf("Failed to send processed batches message: %v", err)
 	}
-
-	if aw.processedBatches.GetCardinality() == 0 {
-		aw.nextBatchToSend = 0
-	} else {
-		aw.nextBatchToSend = aw.processedBatches.Maximum() + 1
-	}
 }
 
-func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData) {
+func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData) uint64 {
 	log.Debugf("Worker %s sending retained data, different formats: %d", aw.Config.WorkerId, len(differentFormats))
 	uniqueKeyColumns := make(map[string]struct{})
 	uniqueAggregations := make(map[string]struct{})
@@ -159,11 +180,7 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 		i := 0
 		for _, row := range dataInfo.Data {
 			if i >= batchSize {
-				if seq >= aw.nextBatchToSend {
-					aw.sendAggregatedDataBatch(dataBatch, seq)
-					aw.nextBatchToSend++
-				}
-
+				aw.sendAggregatedDataBatch(dataBatch, seq)
 				seq++
 				dataBatch.Data = make([][]interface{}, 0)
 				i = 0
@@ -195,12 +212,13 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 
 		if len(dataBatch.Data) > 0 {
 			aw.sendAggregatedDataBatch(dataBatch, seq)
-			aw.nextBatchToSend++
+			seq++
 		}
 	}
+	return seq
 }
 
-func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload) {
+func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload, workerID string) {
 
 	groupByIndexes := getGroupByColIndexes(aw.Config, batch)
 	for _, idx := range groupByIndexes {
@@ -217,6 +235,7 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload) {
 		}
 	}
 
+	reducedData := make(map[string][]a.Aggregation)
 	for _, row := range batch.Rows {
 		if len(row) != len(batch.ColumnNames) {
 			// ignore row
@@ -231,18 +250,41 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload) {
 
 		key := getGroupByKey(groupByIndexes, row)
 
-		if _, exists := aw.reducedData[key]; !exists {
-			aw.reducedData[key] = make([]a.Aggregation, len(aw.Config.Aggregations))
+		if _, exists := reducedData[key]; !exists {
+			reducedData[key] = make([]a.Aggregation, len(aw.Config.Aggregations))
 			for i, agg := range aw.Config.Aggregations {
-				aw.reducedData[key][i] = a.NewAggregation(agg.Func)
+				reducedData[key][i] = a.NewAggregation(agg.Func)
 				// log.Debugf("Initialized aggregation %s for key %s", agg.Func, key)
 			}
 		}
 
 		for i, agg := range aw.Config.Aggregations {
 			idx := aggIndexes[agg.Col]
-			aw.reducedData[key][i] = aw.reducedData[key][i].Add(row[idx])
+			reducedData[key][i] = reducedData[key][i].Add(row[idx])
 		}
+	}
+
+	aw.persistReducedData(batch.SeqNum, reducedData, workerID)
+}
+
+func (aw *AggregatorWorker) persistReducedData(seq uint64, reducedData map[string][]a.Aggregation, workerID string) {
+	data := make(map[string][]interface{})
+	for key, aggs := range reducedData {
+		row := make([]interface{}, len(aggs))
+		for i, agg := range aggs {
+			row[i] = agg.Result()
+		}
+		data[key] = row
+	}
+
+	var op persistance.Operation
+	if aw.Config.IsReducer {
+		op = p.NewReceiveAggregatorBatchOp(seq, workerID, data)
+	} else {
+		op = p.NewAggregateBatchOp(seq, data)
+	}
+	if err := aw.state.Log(op); err != nil {
+		log.Errorf("Failed to apply aggregate batch op for seq %d: %v", seq, err)
 	}
 }
 
