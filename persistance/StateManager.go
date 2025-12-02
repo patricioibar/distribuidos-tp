@@ -75,6 +75,10 @@ func (sm *StateManager) Log(op Operation) error {
 	if err != nil {
 		return err
 	}
+	err = sm.stateLog.Commit()
+	if err != nil {
+		return err
+	}
 	err = op.ApplyTo(sm.state)
 	if err != nil {
 		return err
