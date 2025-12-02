@@ -57,6 +57,29 @@ func NewStateManager(state State, stateLog StateLog, snapshotPeriod int) (*State
 		snapshotPeriod:    snapshotPeriod,
 		logsSinceSnapshot: 0,
 	}
+
+	snapshotData, err := sm.state.Serialize()
+	if err != nil {
+		return nil, err
+	}
+	_, err = sm.stateLog.WriteSnapshot(snapshotData)
+	if err != nil {
+		return nil, err
+	}
+	return sm, nil
+}
+
+// LoadStateManager restores the state from the latest snapshot and WAL without writing a new snapshot.
+func LoadStateManager(state State, stateLog StateLog, snapshotPeriod int) (*StateManager, error) {
+	sm := &StateManager{
+		state:             state,
+		stateLog:          stateLog,
+		snapshotPeriod:    snapshotPeriod,
+		logsSinceSnapshot: 0,
+	}
+	if err := sm.Restore(); err != nil {
+		return nil, err
+	}
 	return sm, nil
 }
 
