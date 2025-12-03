@@ -130,8 +130,18 @@ func (aw *AggregatorWorker) reduceAggregatedData(p *ic.AggregatedDataPayload) {
 }
 
 func (aw *AggregatorWorker) rollbackDuplicatedData() {
+	if !aw.areThereDuplicatedBatches() {
+		// no duplicated data to rollback
+		rollback.SendAllOkToEveryAggregator(
+			aw.Config.WorkerId,
+			aw.Config.MiddlewareAddress,
+			aw.jobID,
+			aw.aggregatorsDone(),
+		)
+		return
+	}
+
 	recoveryQueueDeclared := false
-	var duplicatedMessages uint64 = 0
 	var recoveryResponses *mw.Consumer
 	var err error
 	for aggregatorID, duplicatedBatches := range aw.state.GetState().(*pers.PersistentState).DuplicatedBatches {
@@ -150,7 +160,6 @@ func (aw *AggregatorWorker) rollbackDuplicatedData() {
 				}
 				recoveryQueueDeclared = true
 			}
-			duplicatedMessages += duplicatedBatches.GetCardinality()
 			rollback.AskForLogsFromDuplicatedBatches(
 				aw.Config.WorkerId,
 				aw.Config.MiddlewareAddress,
@@ -159,18 +168,8 @@ func (aw *AggregatorWorker) rollbackDuplicatedData() {
 			)
 		}
 	}
-	if !recoveryQueueDeclared {
-		// no duplicated data to rollback
-		rollback.SendAllOkToEveryAggregator(
-			aw.Config.WorkerId,
-			aw.Config.MiddlewareAddress,
-			aw.jobID,
-			aw.aggregatorsDone(),
-		)
-		return
-	}
 	log.Infof("Waiting for recovery responses for job %s", aw.jobID)
-	aw.receiveRecoveryResponses(recoveryResponses, duplicatedMessages)
+	aw.receiveRecoveryResponses(recoveryResponses)
 }
 
 func (aw *AggregatorWorker) duplicatedBatchesFor(aggregatorID string) *bitmap.Bitmap {
@@ -178,7 +177,7 @@ func (aw *AggregatorWorker) duplicatedBatchesFor(aggregatorID string) *bitmap.Bi
 	return persState.DuplicatedBatchesFor(aggregatorID)
 }
 
-func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consumer, duplicatedMessages uint64) {
+func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consumer) {
 	callback := func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		defer func() { done <- nil }()
 		// log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
@@ -186,7 +185,6 @@ func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consu
 		var receivedMessage rollback.Message
 		if err := receivedMessage.Unmarshal([]byte(jsonStr)); err != nil {
 			log.Errorf("Failed to unmarshal message: %v", err)
-
 			return
 		}
 
@@ -213,9 +211,9 @@ func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consu
 				return
 			}
 
-			duplicatedMessages--
-			if duplicatedMessages == 0 {
+			if !aw.areThereDuplicatedBatches() {
 				log.Infof("All recovery responses received for job %s", aw.jobID)
+				// just in case, double check
 				rollback.SendAllOkToEveryAggregator(
 					aw.Config.WorkerId,
 					aw.Config.MiddlewareAddress,
@@ -233,4 +231,14 @@ func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consu
 	// blocks until queue is deleted
 	recoveryResponses.StartConsuming(callback)
 	recoveryResponses.Close()
+}
+
+func (aw *AggregatorWorker) areThereDuplicatedBatches() bool {
+	for aggregatorID, duplicatedBatches := range aw.state.GetState().(*pers.PersistentState).DuplicatedBatches {
+		if duplicatedBatches.GetCardinality() > 0 {
+			log.Infof("There are %d duplicated batches from aggregator %s for job %s", duplicatedBatches.GetCardinality(), aggregatorID, aw.jobID)
+			return true
+		}
+	}
+	return false
 }

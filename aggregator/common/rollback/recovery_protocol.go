@@ -1,6 +1,8 @@
 package rollback
 
 import (
+	"aggregator/common/persistence"
+
 	"github.com/op/go-logging"
 	"github.com/patricioibar/distribuidos-tp/bitmap"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
@@ -74,4 +76,29 @@ func getRecoveryRequestProducer(aggregatorID string, addr string, jobID string) 
 		return nil
 	}
 	return producer
+}
+
+func getRecoveryResponseProducer(aggregatorID string, addr string, jobID string) *mw.Producer {
+	producer, err := mw.NewProducer(
+		RecoveryResponsesSourceName(aggregatorID),
+		addr,
+		jobID,
+	)
+	if err != nil {
+		log.Errorf("Failed to create recovery requests producer: %v", err)
+		return nil
+	}
+	return producer
+}
+
+func SendOperationLogResponse(aggregatorID string, addr string, jobID string, op *persistence.AggregateBatchOp) {
+	producer := getRecoveryResponseProducer(aggregatorID, addr, jobID)
+	if producer == nil {
+		return
+	}
+	defer producer.Close()
+	msg, _ := NewRecoveryResponse(aggregatorID, op.SeqNumber(), op.Data).Marshal()
+	if err := producer.Send(msg); err != nil {
+		log.Errorf("Failed to publish recovery request message: %v", err)
+	}
 }

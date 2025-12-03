@@ -2,6 +2,7 @@ package common
 
 import (
 	pers "aggregator/common/persistence"
+	"aggregator/common/rollback"
 	"slices"
 	"sync"
 
@@ -112,6 +113,7 @@ func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) {
 		log.Debugf("All workers done. Deleting input queue.")
 		// endSignal, _ := ic.NewEndSignal(nil, payload.SeqNum).Marshal()
 		// aw.output.Send(endSignal)
+		aw.waitForRecoveryRequests()
 		aw.input.Delete()
 		return
 	}
@@ -119,4 +121,69 @@ func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) {
 	msg := ic.NewEndSignal(payload.WorkersDone, payload.SeqNum)
 	endSignal, _ := msg.Marshal()
 	aw.input.Send(endSignal) // re-enqueue the end signal with updated workers done
+}
+
+func (aw *AggregatorWorker) waitForRecoveryRequests() {
+	consumer, err := mw.NewConsumer(
+		aw.Config.WorkerId,
+		rollback.RecoveryResponsesSourceName(aw.Config.WorkerId),
+		aw.Config.MiddlewareAddress,
+		aw.jobID,
+	)
+	if err != nil {
+		log.Errorf("Failed to create recovery responses consumer for job %s: %v", aw.jobID, err)
+		return
+	}
+
+	callback := func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+		defer func() { done <- nil }()
+		// log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
+		jsonStr := string(consumeChannel.Body)
+		var receivedMessage rollback.Message
+		if err := receivedMessage.Unmarshal([]byte(jsonStr)); err != nil {
+			log.Errorf("Failed to unmarshal message: %v", err)
+			return
+		}
+
+		switch receivedMessage.Type {
+		case rollback.TypeRequest:
+			p, ok := receivedMessage.Payload.(*rollback.RecoveryRequestPayload)
+			if !ok {
+				log.Errorf("Invalid payload for rollback request")
+				return
+			}
+
+			for _, seqNum := range p.SequenceNumbers {
+				op, err := aw.state.GetOperationWithSeqNumber(seqNum)
+				if err != nil {
+					log.Errorf("Failed to get operation for seq %d: %v", seqNum, err)
+					continue
+				}
+
+				opCasted, ok := op.(*pers.AggregateBatchOp)
+				if !ok {
+					log.Errorf("Operation for seq %d is not an AggregateBatchOp", seqNum)
+					continue
+				}
+
+				rollback.SendOperationLogResponse(
+					aw.Config.WorkerId,
+					aw.Config.MiddlewareAddress,
+					aw.jobID,
+					opCasted,
+				)
+			}
+
+		case rollback.TypeAllOK:
+			log.Debugf("Received All OK for recovery requests.")
+			consumer.Delete()
+
+		default:
+			log.Errorf("Unexpected message type: %s", receivedMessage.Type)
+		}
+	}
+
+	// blocks until queue is deleted
+	consumer.StartConsuming(callback)
+	consumer.Close()
 }
