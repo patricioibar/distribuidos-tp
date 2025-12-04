@@ -1,12 +1,16 @@
 package main
 
 import (
+	"communication"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 
 	"aggregator/common"
+	"aggregator/common/persistence"
 
 	"github.com/google/uuid"
 	"github.com/op/go-logging"
@@ -54,13 +58,25 @@ func main() {
 
 	jobsMap := make(map[string]*common.AggregatorWorker)
 	jobsMapLock := sync.Mutex{}
+	removeFromMap := make(chan string, 10)
+
+	var consumerName string
+	if config.IsReducer {
+		consumerName = config.QueryName + "-reducer-input"
+	} else {
+		consumerName = config.QueryName + "-aggregator-input"
+	}
+
+	go recoverPreviousJobs(*config, removeFromMap, &jobsMapLock, jobsMap, consumerName)
 
 	incomingJobs, err := mw.NewConsumer(incomingJobsSource+"_"+config.WorkerId, incomingJobsSource, config.MiddlewareAddress)
 	if err != nil {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
-	removeFromMap := make(chan string, 10)
-	callback := initializeAggregatorJob(config, jobsMap, &jobsMapLock, removeFromMap)
+	callback := initializeAggregatorJob(config, jobsMap, &jobsMapLock, removeFromMap, consumerName)
+
+	monitorsCount, _ := strconv.Atoi(config.MonitorsCount)
+	go communication.SendHeartbeatToMonitors("WORKER", config.WorkerId, monitorsCount)
 
 	go func() {
 		if err := incomingJobs.StartConsuming(callback); err != nil {
@@ -92,7 +108,13 @@ func removeDoneJobs(jobsMap map[string]*common.AggregatorWorker, mutex *sync.Mut
 	}
 }
 
-func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.AggregatorWorker, jobsMapLock *sync.Mutex, removeFromMap chan string) func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+func initializeAggregatorJob(
+	config *common.Config,
+	jobsMap map[string]*common.AggregatorWorker,
+	jobsMapLock *sync.Mutex,
+	removeFromMap chan string,
+	consumerName string,
+) mw.OnMessageCallback {
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		jobId, err := uuid.FromBytes(msg.Body[0:16])
 		if err != nil {
@@ -106,7 +128,6 @@ func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.A
 		var input mw.MessageMiddleware
 		var output mw.MessageMiddleware
 
-		consumerName := config.InputName + config.QueryName
 		input, err = mw.NewConsumer(consumerName, config.InputName, config.MiddlewareAddress, jobStr)
 		if err != nil {
 			done <- nil
@@ -120,7 +141,7 @@ func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.A
 			return
 		}
 
-		aggregator := common.NewAggregatorWorker(config, input, output, jobStr, removeFromMap, 0)
+		aggregator := common.NewAggregatorWorker(config, input, output, jobStr, removeFromMap)
 		jobsMapLock.Lock()
 		jobsMap[jobStr] = aggregator
 		jobsMapLock.Unlock()
@@ -140,4 +161,58 @@ func initializeAggregatorJob(config *common.Config, jobsMap map[string]*common.A
 		done <- nil
 	}
 
+}
+
+func recoverPreviousJobs(
+	config common.Config,
+	removeFromMap chan string,
+	jobsMapLock *sync.Mutex,
+	jobsMap map[string]*common.AggregatorWorker,
+	consumerName string,
+) bool {
+	entries, err := os.ReadDir(persistence.StateRoot)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Errorf("Failed to read state dir %s: %v", persistence.StateRoot, err)
+		}
+		return true
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		jobID := e.Name()
+
+		input, err := mw.ResumeConsumer(consumerName, config.InputName, config.MiddlewareAddress, jobID)
+		if err != nil {
+			log.Errorf("Failed to create input consumer: %v", err)
+			continue
+		}
+		if input == nil {
+			// No queue to resume: remove stale persisted state
+			log.Debugf("[%s] input is nil, error: %v", jobID, err)
+			path := filepath.Join(persistence.StateRoot, jobID)
+			if err := os.RemoveAll(path); err != nil {
+				log.Errorf("Failed to remove stale state for job %s: %v", jobID, err)
+			} else {
+				log.Infof("Removed stale state for job %s", jobID)
+			}
+			continue
+		}
+
+		output, err := mw.NewProducer(config.OutputName, config.MiddlewareAddress, jobID)
+		if err != nil {
+			log.Errorf("Failed to create output producer: %v", err)
+			continue
+		}
+
+		aggregator := common.NewAggregatorWorker(&config, input, output, jobID, removeFromMap)
+		jobsMapLock.Lock()
+		jobsMap[jobID] = aggregator
+		jobsMapLock.Unlock()
+
+		log.Infof("Starting aggregator %s for job %s", config.WorkerId, jobID)
+		go aggregator.Start()
+	}
+	return false
 }

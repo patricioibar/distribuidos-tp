@@ -8,6 +8,7 @@ type AggConfig struct {
 type Aggregation interface {
 	Add(value interface{}) Aggregation
 	Result() interface{}
+	Set(value interface{})
 }
 
 func GetTypeOfAgg(funcName string) string {

@@ -5,10 +5,12 @@ use (
 	./analyst
 	./coffee-analyzer
 	./communication
+	./container-killer
 	./filter
 	./innercommunication
 	./joiner
 	./middleware
 	./persistance
 	./bitmap
+	./monitor
 )

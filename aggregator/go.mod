@@ -7,6 +7,7 @@ require (
 	github.com/patricioibar/distribuidos-tp/bitmap v0.0.0-20251130061411-2db4766db800
 	github.com/patricioibar/distribuidos-tp/innercommunication v0.0.0-00010101000000-000000000000
 	github.com/patricioibar/distribuidos-tp/middleware v0.0.0-00010101000000-000000000000
+	github.com/patricioibar/distribuidos-tp/persistance v0.0.0-20251202043141-0dccd9654368
 	github.com/spf13/viper v1.21.0
 )
 
@@ -16,7 +17,10 @@ replace github.com/patricioibar/distribuidos-tp/middleware => ../middleware
 
 require github.com/rabbitmq/amqp091-go v1.10.0 // indirect
 
+replace communication => ../communication
+
 require (
+	communication v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7

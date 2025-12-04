@@ -5,6 +5,7 @@ import (
 	responseparser "cofee-analyzer/response_parser"
 	"encoding/json"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ type CoffeeAnalyzer struct {
 	duplicateProb  float64
 	jobsState      *persistance.StateManager
 	jobsStateMutex sync.Mutex
+	monitorsCount  string
 }
 
 const jobPublishingExchange = "JOB_SOURCE"
@@ -51,7 +53,7 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 		log.Fatalf("Failed to create state log: %v", err)
 	}
 
-	jobsState, err := persistance.LoadStateManager(jobSessionState, stateLog, PERSISTANCE_INTERVAL)
+	jobsState, err := persistance.NewStateManager(jobSessionState, stateLog, PERSISTANCE_INTERVAL)
 	if err != nil {
 		log.Fatalf("Failed to create state manager: %v", err)
 	}
@@ -67,6 +69,7 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 		duplicateProb:  config.DuplicateProb,
 		jobsState:      jobsState,
 		jobsStateMutex: sync.Mutex{},
+		monitorsCount:  config.MonitorsCount,
 	}
 }
 
@@ -86,6 +89,9 @@ func (ca *CoffeeAnalyzer) Start() {
 		return
 	}
 	defer listener_socket.Close()
+
+	monitorsCount, _ := strconv.Atoi(ca.monitorsCount)
+	go communication.SendHeartbeatToMonitors("WORKER", "coffee-analyzer", monitorsCount)
 
 	log.Infof("Listening on %s", ca.Address)
 

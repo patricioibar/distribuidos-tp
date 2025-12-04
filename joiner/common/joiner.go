@@ -1,24 +1,26 @@
 package common
 
 import (
+	"os"
 	"sync"
 
 	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
+	pers "github.com/patricioibar/distribuidos-tp/persistance"
 )
+
+const StateRoot = ".state"
 
 type JoinerWorker struct {
 	Config        *Config
 	leftInput     mw.MessageMiddleware
 	rightInput    mw.MessageMiddleware
 	output        mw.MessageMiddleware
-	rightCache    *TableCache
-	leftSeqRecv   *bitmap.Bitmap
 	jobID         string
+	state         *pers.StateManager
 	removeFromMap chan string
 	closeOnce     sync.Once
-	rightSeqRecv  *bitmap.Bitmap
 }
 
 func NewJoinerWorker(
@@ -29,16 +31,106 @@ func NewJoinerWorker(
 	jobID string,
 	removeFromMap chan string,
 ) *JoinerWorker {
+	sm := initStateManager(jobID)
+	if sm == nil {
+		log.Errorf("StateManager not initialized for job %s", jobID)
+		return nil
+	}
 	return &JoinerWorker{
 		Config:        config,
 		leftInput:     leftInput,
 		rightInput:    rightInput,
 		output:        output,
-		rightCache:    nil,
-		leftSeqRecv:   bitmap.New(),
 		jobID:         jobID,
 		removeFromMap: removeFromMap,
-		rightSeqRecv:  bitmap.New(),
+		state:         sm,
+	}
+}
+
+func initStateManager(jobId string) *pers.StateManager {
+	stateDir := StateRoot + "/" + jobId
+
+	recover := false
+	if _, err := os.Stat(stateDir); err == nil {
+		recover = true
+	} else if !os.IsNotExist(err) {
+		log.Errorf("Failed to stat state dir %s: %v", stateDir, err)
+		return nil
+	}
+
+	stateLog, err := pers.NewStateLog(stateDir)
+	if err != nil {
+		log.Errorf("Failed to create state log for job %s: %v", jobId, err)
+		return nil
+	}
+
+	fs := NewJoinerState()
+	sm, err := pers.NewStateManager(fs, stateLog, 100)
+	if err != nil {
+		log.Errorf("Failed to create state manager for job %s: %v", jobId, err)
+		_ = stateLog.Close()
+		return nil
+	}
+
+	if !recover {
+		return sm
+	}
+
+	if err := sm.Restore(); err != nil {
+		log.Errorf("Failed to restore state for job %s: %v", jobId, err)
+		_ = sm.Close()
+		return nil
+	}
+	return sm
+}
+
+func (jw *JoinerWorker) filterState() *JoinerState {
+	state, ok := jw.state.GetState().(*JoinerState)
+	if ok {
+		return state
+	}
+	return nil
+}
+
+func (jw *JoinerWorker) rightSeqRecv() *bitmap.Bitmap {
+	js := jw.filterState()
+	if js.RightSeqRecv == nil {
+		js.RightSeqRecv = bitmap.New()
+	}
+	return js.RightSeqRecv
+}
+
+func (jw *JoinerWorker) leftSeqRecv() *bitmap.Bitmap {
+	js := jw.filterState()
+	if js.LeftSeqRecv == nil {
+		js.LeftSeqRecv = bitmap.New()
+	}
+	return js.LeftSeqRecv
+}
+
+func (jw *JoinerWorker) rightCache() *TableCache {
+	js := jw.filterState()
+	return js.RightCache
+}
+
+func (jw *JoinerWorker) persistRightSeqNum(seqNum uint64) {
+	op := NewAddBitmapOp(seqNum, targetRightSeqRecv, []uint64{seqNum})
+	if err := jw.state.Log(op); err != nil {
+		log.Errorf("Failed to persist right seqNum %d: %v", seqNum, err)
+	}
+}
+
+func (jw *JoinerWorker) persistLeftSeqNum(seqNum uint64) {
+	op := NewAddBitmapOp(seqNum, targetLeftSeqRecv, []uint64{seqNum})
+	if err := jw.state.Log(op); err != nil {
+		log.Errorf("Failed to persist left seqNum %d: %v", seqNum, err)
+	}
+}
+
+func (jw *JoinerWorker) persistRightCache(seqNum uint64, columns []string, rows [][]interface{}) {
+	op := NewAddRightCacheOp(seqNum, columns, rows)
+	if err := jw.state.Log(op); err != nil {
+		log.Errorf("Failed to persist right cache: %v", err)
 	}
 }
 
@@ -49,9 +141,23 @@ func (jw *JoinerWorker) Start() {
 
 func (jw *JoinerWorker) Close() {
 	jw.closeOnce.Do(func() {
-		jw.leftInput.Close()
-		jw.rightInput.Close()
+		if jw.leftInput != nil {
+			jw.leftInput.Close()
+		}
+		if jw.rightInput != nil {
+			jw.rightInput.Close()
+		}
 		jw.output.Close()
+		jw.state.Close()
+
+		// remove state directory
+		stateDir := StateRoot + "/" + jw.jobID
+		if err := os.RemoveAll(stateDir); err != nil {
+			log.Errorf("Failed to remove state directory %s: %v", stateDir, err)
+		} else {
+			log.Debugf("Removed state directory %s", stateDir)
+		}
+
 		if jw.removeFromMap != nil {
 			jw.removeFromMap <- jw.jobID
 		}
@@ -60,16 +166,20 @@ func (jw *JoinerWorker) Close() {
 }
 
 func (jw *JoinerWorker) innerStart() {
-	// blocks until right input queue is closed
-	if err := jw.rightInput.StartConsuming(jw.rightCallback()); err != nil {
-		log.Errorf("Failed to start consuming right input messages for job %s: %v", jw.jobID, err)
-		return
+	// blocks until right input queue is deleted
+	if jw.rightInput != nil {
+		if err := jw.rightInput.StartConsuming(jw.rightCallback()); err != nil {
+			log.Errorf("Failed to start consuming right input messages for job %s: %v", jw.jobID, err)
+			return
+		}
 	}
 	log.Debugf("%s received all right input, starting left input", jw.Config.WorkerId)
 	// log.Debugf("Right cache: %v", jw.rightCache)
-	// blocks until left input queue is closed
-	if err := jw.leftInput.StartConsuming(jw.leftCallback()); err != nil {
-		log.Errorf("Failed to start consuming left input messages for job %s: %v", jw.jobID, err)
+	// blocks until left input queue is deleted
+	if jw.leftInput != nil {
+		if err := jw.leftInput.StartConsuming(jw.leftCallback()); err != nil {
+			log.Errorf("Failed to start consuming left input messages for job %s: %v", jw.jobID, err)
+		}
 	}
 }
 
@@ -92,7 +202,7 @@ func (jw *JoinerWorker) rightCallback() mw.OnMessageCallback {
 			jw.rightInput.Delete()
 
 		case *ic.SequenceSetPayload:
-			jw.rightSeqRecv.Or(p.Sequences.Bitmap)
+			jw.handleRightSequenceSet(p)
 
 		default:
 			log.Warningf("Unexpected payload type in right input: %T", p)
@@ -102,27 +212,47 @@ func (jw *JoinerWorker) rightCallback() mw.OnMessageCallback {
 	}
 }
 
+func (jw *JoinerWorker) handleRightSequenceSet(p *ic.SequenceSetPayload) {
+	if p == nil || p.Sequences == nil || p.Sequences.Bitmap == nil {
+		return
+	}
+	vals := p.Sequences.Bitmap.ToArray()
+	if len(vals) == 0 {
+		return
+	}
+	op := NewAddBitmapOp(0, targetRightSeqRecv, vals)
+	if err := jw.state.Log(op); err != nil {
+		log.Errorf("Failed to persist merged right sequences: %v", err)
+	}
+}
+
+func (jw *JoinerWorker) handleLeftSequenceSet(p *ic.SequenceSetPayload) {
+	if p == nil || p.Sequences == nil || p.Sequences.Bitmap == nil {
+		return
+	}
+	vals := p.Sequences.Bitmap.ToArray()
+	if len(vals) == 0 {
+		return
+	}
+	op := NewAddBitmapOp(0, targetLeftSeqRecv, vals)
+	if err := jw.state.Log(op); err != nil {
+		log.Errorf("Failed to persist merged left sequences: %v", err)
+	}
+}
+
 func (jw *JoinerWorker) addNewRightBatch(p *ic.RowsBatchPayload) {
-	var err error
-	if jw.rightCache == nil {
-		jw.rightCache, err = NewTableCache(p.ColumnNames)
-		if err != nil {
-			log.Errorf("Failed to create right cache: %v", err)
-		}
+	if jw.rightCache() == nil {
+		jw.persistRightCache(p.SeqNum, p.ColumnNames, nil)
 	}
 
-	if jw.rightSeqRecv.Contains(p.SeqNum) {
+	if jw.rightSeqRecv().Contains(p.SeqNum) {
 		log.Debugf("Duplicate right batch with SeqNum %d received, ignoring", p.SeqNum)
 		return
 	}
-	jw.rightSeqRecv.Add(p.SeqNum)
+	jw.persistRightSeqNum(p.SeqNum)
 
-	if jw.rightCache != nil && len(p.Rows) != 0 {
-		for _, row := range p.Rows {
-			if err := jw.rightCache.AddRow(row); err != nil {
-				log.Errorf("Failed to add row to cache: %v", err)
-			}
-		}
+	if jw.rightCache() != nil && len(p.Rows) != 0 {
+		jw.persistRightCache(p.SeqNum, nil, p.Rows)
 	}
 }
 
@@ -146,7 +276,7 @@ func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 			jw.propagateLeftEndSignal(p)
 
 		case *ic.SequenceSetPayload:
-			jw.leftSeqRecv.Or(p.Sequences.Bitmap)
+			jw.handleLeftSequenceSet(p)
 
 		default:
 			log.Warningf("Unexpected payload type in right input: %T", p)
@@ -157,19 +287,19 @@ func (jw *JoinerWorker) leftCallback() mw.OnMessageCallback {
 }
 
 func (jw *JoinerWorker) processLeftRowsBatch(p *ic.RowsBatchPayload) {
-	if jw.leftSeqRecv.Contains(p.SeqNum) {
+	if jw.leftSeqRecv().Contains(p.SeqNum) {
 		log.Debugf("Duplicate left batch with SeqNum %d received, ignoring", p.SeqNum)
 		return
 	}
 
 	if len(p.Rows) == 0 {
-		jw.leftSeqRecv.Add(p.SeqNum)
+		jw.persistLeftSeqNum(p.SeqNum)
 		return
 	}
 
 	joinedBatch := jw.joinBatch(p)
 	if len(joinedBatch) == 0 {
-		jw.leftSeqRecv.Add(p.SeqNum)
+		jw.persistLeftSeqNum(p.SeqNum)
 		return
 	}
 
@@ -177,10 +307,10 @@ func (jw *JoinerWorker) processLeftRowsBatch(p *ic.RowsBatchPayload) {
 }
 
 func (jw *JoinerWorker) sendJoinedSequenceSet() {
-	if jw.leftSeqRecv.GetCardinality() == 0 {
+	if jw.leftSeqRecv().GetCardinality() == 0 {
 		return
 	}
-	msg := ic.NewSequenceSet(jw.Config.WorkerId, jw.leftSeqRecv)
+	msg := ic.NewSequenceSet(jw.Config.WorkerId, jw.leftSeqRecv())
 	data, err := msg.Marshal()
 	if err != nil {
 		log.Errorf("Failed to marshal sequence set: %v", err)
@@ -211,18 +341,18 @@ func (jw *JoinerWorker) propagateLeftEndSignal(payload *ic.EndSignalPayload) {
 }
 
 func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatchPayload) [][]interface{} {
-	if jw.rightCache == nil {
+	if jw.rightCache() == nil {
 		log.Errorf("Right cache is nil, cannot join")
 		return nil
 	}
 
 	joinKeyIndexLeft := findColumnIndex(jw.Config.JoinKey, batch.ColumnNames)
-	joinKeyIndexRight := findColumnIndex(jw.Config.JoinKey, jw.rightCache.Columns)
+	joinKeyIndexRight := findColumnIndex(jw.Config.JoinKey, jw.rightCache().Columns)
 
 	if joinKeyIndexLeft == -1 || joinKeyIndexRight == -1 {
 		log.Errorf("Join key (%s) not found in columns", jw.Config.JoinKey)
 		log.Errorf("Left columns: %v", batch.ColumnNames)
-		log.Errorf("Right columns: %v", jw.rightCache.Columns)
+		log.Errorf("Right columns: %v", jw.rightCache().Columns)
 		return nil
 	}
 
@@ -234,7 +364,7 @@ func (jw *JoinerWorker) joinBatch(batch *ic.RowsBatchPayload) [][]interface{} {
 		}
 		leftKey := leftRow[joinKeyIndexLeft]
 
-		for _, rightRow := range jw.rightCache.Rows {
+		for _, rightRow := range jw.rightCache().Rows {
 			if rightRow == nil || len(rightRow) <= joinKeyIndexRight {
 				log.Errorf("Invalid right row: %v", rightRow)
 				continue
@@ -276,7 +406,7 @@ func (jw *JoinerWorker) addJoinedRow(joinedRows *[][]interface{}, columnNames []
 			joinedRow[i] = leftRow[leftColIndex]
 			continue
 		}
-		rightColIndex := findColumnIndex(col, jw.rightCache.Columns)
+		rightColIndex := findColumnIndex(col, jw.rightCache().Columns)
 		if rightColIndex != -1 {
 			joinedRow[i] = rightRow[rightColIndex]
 		} else {
@@ -293,7 +423,7 @@ func (jw *JoinerWorker) sendJoinedBatch(joinedBatch [][]interface{}, seqNum uint
 		log.Errorf("Failed to marshal joined batch: %v", err)
 		return
 	}
-	log.Debugf("Sending joined batch, rows: %d, bytes: %d", len(joinedBatch), len(batchBytes))
+
 	if err := jw.output.Send(batchBytes); err != nil {
 		log.Errorf("Failed to send joined batch: %v", err)
 	}

@@ -3,6 +3,7 @@ package communication
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -11,6 +12,8 @@ import (
 )
 
 const getResponseMessage = "GET_RESPONSES"
+
+var MonitorsCount int
 
 func (s *Socket) BindAndListen(address string) error {
 	ln, err := net.Listen("tcp", address)
@@ -185,4 +188,58 @@ func (s *Socket) IsAlive(timeout time.Duration) bool {
 		return false
 	}
 	return true
+}
+
+func ResolveAddresses(nodeId string, monitorsCount int, addressList ...int) ([]*net.UDPAddr, error) {
+	var monitorAddresses []*net.UDPAddr
+	if len(addressList) > 0 {
+		for _, monitorIdInt := range addressList {
+			monitorId := fmt.Sprintf("monitor-%d", monitorIdInt)
+			addrStr := fmt.Sprintf("%s:9000", monitorId)
+			addr, _ := net.ResolveUDPAddr("udp", addrStr)
+			monitorAddresses = append(monitorAddresses, addr)
+		}
+		fmt.Printf("%v\n", monitorAddresses)
+	} else {
+		for i := 1; i <= monitorsCount; i++ {
+			monitorId := fmt.Sprintf("monitor-%d", i)
+			if monitorId == nodeId {
+				continue
+			}
+			addrStr := fmt.Sprintf("%s:9000", monitorId)
+			addr, _ := net.ResolveUDPAddr("udp", addrStr)
+			monitorAddresses = append(monitorAddresses, addr)
+		}
+	}
+
+	return monitorAddresses, nil
+}
+
+func SendMessageToMonitors(addresses []*net.UDPAddr, msg string) {
+	for _, addr := range addresses {
+		conn, err := net.DialUDP("udp", nil, addr)
+		if err != nil {
+			fmt.Printf("error dialing UDP to address: %v %s with message: %s \n", err, addr.String(), msg)
+			continue
+		}
+		msg := []byte(msg)
+		_, err = conn.Write(msg)
+		if err != nil {
+			fmt.Println("error sending message:", err)
+		}
+		conn.Close()
+	}
+}
+
+func (s *Socket) GetRemoteAddress() string {
+	return s.conn.RemoteAddr().String()
+}
+
+func SendHeartbeatToMonitors(heartBeat string, nodeID string, monitorsCount int) {
+	t := time.NewTicker(250 * time.Millisecond)
+	addresses, _ := ResolveAddresses(nodeID, monitorsCount)
+
+	for range t.C {
+		SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", heartBeat, nodeID))
+	}
 }

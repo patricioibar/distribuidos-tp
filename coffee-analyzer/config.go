@@ -21,6 +21,7 @@ type Config struct {
 	LogLevel              string           `json:"log-level" mapstructure:"log-level"`
 	Queries               []rp.QueryOutput `json:"queries" mapstructure:"queries"`
 	TotalWorkers          int              `json:"total-workers" mapstructure:"total-workers"`
+	MonitorsCount         string           `json:"monitors-count" mapstructure:"monitors-count"`
 	DuplicateProb         float64          `json:"duplicate-prob" mapstructure:"duplicate-prob"`
 }
 
@@ -28,6 +29,7 @@ var requiredFields = []string{
 	"listening-address",
 	"middleware-address",
 	"total-workers",
+	"monitors-count",
 }
 
 // field: default value

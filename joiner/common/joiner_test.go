@@ -3,6 +3,7 @@ package common_test
 import (
 	"fmt"
 	"joiner/common"
+	"os"
 	"testing"
 
 	"github.com/patricioibar/distribuidos-tp/bitmap"
@@ -120,9 +121,15 @@ func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) {
 	return nil
 }
 
+func removePersistenceFolder(folderName string) {
+	stateDir := common.StateRoot + "/" + folderName
+	os.RemoveAll(stateDir)
+}
+
 var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
 func TestJoinMultipleRows(t *testing.T) {
+	removePersistenceFolder("test1")
 	leftColumns := []string{"id", "name"}
 	leftRows := [][]interface{}{
 		{1, "Alice"},
@@ -246,6 +253,7 @@ func rowsBatchFromString(s string) (*ic.RowsBatchPayload, error) {
 }
 
 func TestJoinNoMatches(t *testing.T) {
+	removePersistenceFolder("test2")
 	leftColumns := []string{"id", "name"}
 	leftRows := [][]interface{}{
 		{1, "Alice"},
@@ -275,7 +283,7 @@ func TestJoinNoMatches(t *testing.T) {
 	rightInput := newStubConsumer()
 	output := newStubProducer()
 
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "test2", nil)
 
 	go func() { joiner.Start() }()
 
@@ -313,6 +321,7 @@ func TestJoinNoMatches(t *testing.T) {
 }
 
 func TestJoinMultipleBatches(t *testing.T) {
+	removePersistenceFolder("test3")
 	leftColumns := []string{"name", "id"}
 	leftRows1 := [][]interface{}{
 		{"Alice", 1},
@@ -362,7 +371,7 @@ func TestJoinMultipleBatches(t *testing.T) {
 	rightInput := newStubConsumer()
 	output := newStubProducer()
 
-	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "", nil)
+	joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, "test3", nil)
 
 	go func() { joiner.Start() }()
 
@@ -427,6 +436,8 @@ func TestJoinMultipleBatches(t *testing.T) {
 }
 
 func TestMultipleJoiners(t *testing.T) {
+	removePersistenceFolder("test4-w1")
+	removePersistenceFolder("test4-w2")
 	leftColumns := []string{"id", "name"}
 	leftRows1 := [][]interface{}{
 		{1, "Alice"},
@@ -486,8 +497,8 @@ func TestMultipleJoiners(t *testing.T) {
 	right2Input := newStubConsumer()
 	output := newStubProducer()
 
-	joiner1 := common.NewJoinerWorker(config1, leftInput, right1Input, output, "", nil)
-	joiner2 := common.NewJoinerWorker(config2, leftInput, right2Input, output, "", nil)
+	joiner1 := common.NewJoinerWorker(config1, leftInput, right1Input, output, "test4-w1", nil)
+	joiner2 := common.NewJoinerWorker(config2, leftInput, right2Input, output, "test4-w2", nil)
 
 	go func() { joiner1.Start() }()
 	go func() { joiner2.Start() }()
@@ -560,6 +571,9 @@ func TestMultipleJoiners(t *testing.T) {
 
 func TestJoinersDuplicateEndSignal(t *testing.T) {
 	numOfWorkers := 3
+	for i := 1; i <= numOfWorkers; i++ {
+		removePersistenceFolder(fmt.Sprintf("test5-w%d", i))
+	}
 	leftInput := newStubConsumer()
 	output := newStubProducer()
 
@@ -574,7 +588,7 @@ func TestJoinersDuplicateEndSignal(t *testing.T) {
 		}
 
 		waitToEnd[i] = make(chan struct{}, 1)
-		joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, fmt.Sprintf("job-%d", i+1), make(chan string, 1))
+		joiner := common.NewJoinerWorker(config, leftInput, rightInput, output, fmt.Sprintf("test5-w%d", i+1), make(chan string, 1))
 		go func(i int, j *common.JoinerWorker) {
 			j.Start()
 			waitToEnd[i] <- struct{}{}
