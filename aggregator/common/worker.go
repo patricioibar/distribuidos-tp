@@ -38,7 +38,6 @@ func NewAggregatorWorker(
 	output mw.MessageMiddleware,
 	jobID string,
 	removeFromMap chan string,
-	nextBatchSeq uint64,
 ) *AggregatorWorker {
 	sm := p.InitStateManager(jobID)
 	if sm == nil {

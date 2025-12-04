@@ -77,8 +77,23 @@ func (aw *AggregatorWorker) reducerPassToNextStage() {
 		log.Errorf("Failed to send end signal message: %v", err)
 	}
 	log.Debug("Deleting input")
+	aw.deleteInputForAggregators()
 	aw.input.Delete()
 	close(aw.closeChan)
+}
+
+func (aw *AggregatorWorker) deleteInputForAggregators() {
+	deleteInputQueue, err := mw.ResumeConsumer(
+		aw.Config.QueryName+"-aggregator-input",
+		"",
+		aw.Config.MiddlewareAddress,
+		aw.jobID,
+	)
+	if err != nil {
+		log.Errorf("[%s] Failed to create delete input queue consumer: %v", aw.jobID, err)
+	}
+	deleteInputQueue.Delete()
+	deleteInputQueue.Close()
 }
 
 func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceSetPayload) {

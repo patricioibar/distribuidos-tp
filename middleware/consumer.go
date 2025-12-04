@@ -95,7 +95,7 @@ func ResumeConsumer(consumerName string, sourceName string, connectionAddr strin
 		key = keys[0]
 	}
 
-	qName := consumerName + key
+	qName := key + "###" + consumerName
 
 	// Inspect the queue without creating it. If it does not exist, return (nil, nil).
 	// QueueInspect is deprecated; use QueueDeclarePassive (equivalent to passive QueueDeclare).

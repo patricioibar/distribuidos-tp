@@ -67,7 +67,7 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, se
 		// This worker has already sent its end signal (duplicated message, ignore)
 		return false
 	}
-	shouldDeleteInput := aw.PropagateEndSignal(p)
+	aw.PropagateEndSignal(p)
 	sendDataOnce.Do(func() {
 		retainedData := aw.dataRetainer.RetainData(
 			aw.Config.GroupBy,
@@ -85,12 +85,7 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, se
 		aw.waitForRecoveryRequests(producer, consumer)
 		close(aw.closeChan)
 	})
-	if shouldDeleteInput {
-		log.Debugf("[%s] All workers done. Deleting input queue.", aw.jobID)
-		aw.input.Delete()
-	} else {
-		log.Debugf("[%s] Done.", aw.jobID)
-	}
+	log.Debugf("[%s] Done.", aw.jobID)
 	return true
 }
 

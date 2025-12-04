@@ -285,7 +285,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 func newWorker(config *common.Config, testid string) (*StubConsumer, *StubProducer) {
 	input := newStubConsumer()
 	output := newStubProducer()
-	worker := common.NewAggregatorWorker(config, input, output, testid, make(chan string, 1), 0)
+	worker := common.NewAggregatorWorker(config, input, output, testid, make(chan string, 1))
 	go worker.Start()
 	input.waitForStart()
 	return input, output
@@ -304,7 +304,7 @@ func newWorkers(config *common.Config, workersCount int, testid string) (*StubCo
 			WorkerId:     fmt.Sprintf("worker-%d", i+1),
 			LogLevel:     "DEBUG",
 		}
-		worker := common.NewAggregatorWorker(&configCopy, input, output, testid, make(chan string, 1), 0)
+		worker := common.NewAggregatorWorker(&configCopy, input, output, testid, make(chan string, 1))
 		go worker.Start()
 		input.waitForStart()
 	}
@@ -497,7 +497,7 @@ func TestTwoAggregatorsDuplicateEndSignal(t *testing.T) {
 			LogLevel:     "DEBUG",
 		}
 		waitToEnd[i] = make(chan struct{}, 1)
-		worker := common.NewAggregatorWorker(&configCopy, input, output, testid, make(chan string, 1), 0)
+		worker := common.NewAggregatorWorker(&configCopy, input, output, testid, make(chan string, 1))
 		go func(i int) {
 			worker.Start()
 			fmt.Printf("worker %d ended", i+1)
