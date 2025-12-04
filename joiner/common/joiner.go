@@ -141,8 +141,12 @@ func (jw *JoinerWorker) Start() {
 
 func (jw *JoinerWorker) Close() {
 	jw.closeOnce.Do(func() {
-		jw.leftInput.Close()
-		jw.rightInput.Close()
+		if jw.leftInput != nil {
+			jw.leftInput.Close()
+		}
+		if jw.rightInput != nil {
+			jw.rightInput.Close()
+		}
 		jw.output.Close()
 		jw.state.Close()
 
@@ -162,16 +166,20 @@ func (jw *JoinerWorker) Close() {
 }
 
 func (jw *JoinerWorker) innerStart() {
-	// blocks until right input queue is closed
-	if err := jw.rightInput.StartConsuming(jw.rightCallback()); err != nil {
-		log.Errorf("Failed to start consuming right input messages for job %s: %v", jw.jobID, err)
-		return
+	// blocks until right input queue is deleted
+	if jw.rightInput != nil {
+		if err := jw.rightInput.StartConsuming(jw.rightCallback()); err != nil {
+			log.Errorf("Failed to start consuming right input messages for job %s: %v", jw.jobID, err)
+			return
+		}
 	}
 	log.Debugf("%s received all right input, starting left input", jw.Config.WorkerId)
 	// log.Debugf("Right cache: %v", jw.rightCache)
-	// blocks until left input queue is closed
-	if err := jw.leftInput.StartConsuming(jw.leftCallback()); err != nil {
-		log.Errorf("Failed to start consuming left input messages for job %s: %v", jw.jobID, err)
+	// blocks until left input queue is deleted
+	if jw.leftInput != nil {
+		if err := jw.leftInput.StartConsuming(jw.leftCallback()); err != nil {
+			log.Errorf("Failed to start consuming left input messages for job %s: %v", jw.jobID, err)
+		}
 	}
 }
 

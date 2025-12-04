@@ -173,8 +173,14 @@ func recoverPreviousJobs(config common.Config, removeFromMap chan string, jobsMa
 
 		// All workers receive copies of the messages from the right input
 		uniqueName := config.RightInputName + "-" + config.WorkerId
-		rightInput, _ := mw.NewConsumer(uniqueName, config.RightInputName, config.MiddlewareAddress, jobID)
-		// if error != nil then all right input was already received and persisted
+		rightInput, err := mw.ResumeConsumer(uniqueName, config.RightInputName, config.MiddlewareAddress, jobID)
+		if err != nil {
+			log.Errorf("ResumeConsumer error for right input, job %s: %v", jobID, err)
+			continue
+		}
+		if rightInput == nil {
+			// all right input was already received and persisted
+		}
 
 		// Try to resume left consumer for this job. ResumeConsumer returns (nil, nil)
 		// when the queue doesn't exist anymore.
@@ -200,13 +206,23 @@ func recoverPreviousJobs(config common.Config, removeFromMap chan string, jobsMa
 			log.Fatalf("Failed to create output producer: %v", err)
 		}
 
-		joiner := common.NewJoinerWorker(&config, leftInput, rightInput, output, jobID, removeFromMap)
+		// Convert nil *Consumer to nil interface to preserve nil-check semantics
+		var leftMW mw.MessageMiddleware
+		var rightMW mw.MessageMiddleware
+		if leftInput != nil {
+			leftMW = leftInput
+		}
+		if rightInput != nil {
+			rightMW = rightInput
+		}
+
+		joiner := common.NewJoinerWorker(&config, leftMW, rightMW, output, jobID, removeFromMap)
 
 		jobsMapLock.Lock()
 		jobsMap[jobID] = joiner
 		jobsMapLock.Unlock()
 
-		log.Infof("Starting joiner %s for job %s...", config.WorkerId, jobID)
+		log.Infof("Resuming joiner %s for job %s...", config.WorkerId, jobID)
 		go joiner.Start()
 	}
 	return false
