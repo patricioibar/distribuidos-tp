@@ -8,6 +8,7 @@ COPY communication ./communication
 COPY innercommunication ./innercommunication
 COPY middleware ./middleware
 COPY coffee-analyzer ./coffee-analyzer
+COPY persistance ./persistance
 
 WORKDIR /build/coffee-analyzer
 RUN go mod download

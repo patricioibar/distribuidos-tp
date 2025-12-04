@@ -8,6 +8,8 @@ replace github.com/patricioibar/distribuidos-tp/middleware => ../middleware
 
 replace communication => ../communication
 
+replace github.com/patricioibar/distribuidos-tp/persistance => ../persistance
+
 require (
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/patricioibar/distribuidos-tp/innercommunication v0.0.0-00010101000000-000000000000
@@ -18,6 +20,7 @@ require (
 require (
 	github.com/google/uuid v1.6.0
 	github.com/patricioibar/distribuidos-tp/bitmap v0.0.0-20251130061411-2db4766db800
+	github.com/patricioibar/distribuidos-tp/persistance v0.0.0-00010101000000-000000000000
 )
 
 require (
