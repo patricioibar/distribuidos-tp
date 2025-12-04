@@ -13,6 +13,10 @@ func TestJoinerStateSerializeDeserialize(t *testing.T) {
 	js := NewJoinerState()
 	js.RightSeqRecv.Add(5)
 	js.LeftSeqRecv.Add(2)
+	js.RightCache = &TableCache{
+		Columns: []string{"col1", "col2"},
+		Rows:    [][]interface{}{{1, "a"}, {2, "b"}},
+	}
 
 	data, err := js.Serialize()
 	if err != nil {
@@ -29,6 +33,15 @@ func TestJoinerStateSerializeDeserialize(t *testing.T) {
 	}
 	if !js2.LeftSeqRecv.Contains(2) {
 		t.Fatalf("LeftSeqRecv missing value after deserialize: %v", js2.LeftSeqRecv)
+	}
+	if js2.RightCache == nil {
+		t.Fatalf("RightCache is nil after deserialize")
+	}
+	if len(js2.RightCache.Columns) != 2 || js2.RightCache.Columns[0] != "col1" || js2.RightCache.Columns[1] != "col2" {
+		t.Fatalf("RightCache columns mismatch after deserialize: %v", js2.RightCache.Columns)
+	}
+	if len(js2.RightCache.Rows) != 2 {
+		t.Fatalf("RightCache rows length mismatch after deserialize: got %d want 2", len(js2.RightCache.Rows))
 	}
 }
 
@@ -136,13 +149,11 @@ func TestStateManagerIntegrationJoiner(t *testing.T) {
 	}
 
 	// restore into fresh state
+	// create a state manager that *loads* existing snapshot + WAL entries
 	js2 := NewJoinerState()
-	sm2, err := pers.NewStateManager(js2, sl, 1000)
+	sm2, err := pers.LoadStateManager(js2, sl, 1000)
 	if err != nil {
-		t.Fatalf("NewStateManager failed for restore: %v", err)
-	}
-	if err := sm2.Restore(); err != nil {
-		t.Fatalf("StateManager.Restore failed: %v", err)
+		t.Fatalf("LoadStateManager failed for restore: %v", err)
 	}
 
 	if !js2.LeftSeqRecv.Contains(3) {

@@ -82,6 +82,17 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, se
 		}
 
 		aw.sendProcessedBatches()
+
+		var maxseq uint64
+		if aw.processedBatches().GetCardinality() > 0 {
+			maxseq = aw.processedBatches().Maximum() + 1
+		} else {
+			maxseq = 0
+		}
+		if err := aw.state.Log(pers.NewSetRecoveringOp(maxseq, true)); err != nil {
+			log.Errorf("Failed to set recovering to true for job %s: %v", aw.jobID, err)
+		}
+
 		aw.waitForRecoveryRequests(producer, consumer)
 		close(aw.closeChan)
 	})
@@ -204,10 +215,19 @@ func (aw *AggregatorWorker) waitForRecoveryRequests(responsesProducer *mw.Produc
 		}
 	}
 
-	// blocks until queue is deleted
 	log.Debugf("Worker %s waiting for recovery requests for job %s...", aw.Config.WorkerId, aw.jobID)
+	// blocks until queue is deleted
 	requestConsumer.StartConsuming(callback)
 	log.Debugf("[%s] Received All OK for recovery requests.", aw.jobID)
+	var maxseq uint64
+	if aw.processedBatches().GetCardinality() > 0 {
+		maxseq = aw.processedBatches().Maximum() + 2
+	} else {
+		maxseq = 0
+	}
+	if err := aw.state.Log(pers.NewSetRecoveringOp(maxseq, false)); err != nil {
+		log.Errorf("Failed to set recovering to false for job %s: %v", aw.jobID, err)
+	}
 	requestConsumer.Close()
 	responsesProducer.Close()
 }

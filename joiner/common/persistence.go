@@ -32,10 +32,12 @@ func (js *JoinerState) Serialize() ([]byte, error) {
 	type wrapper struct {
 		RightSeqRecv *bitmap.JSONBitmap `json:"right_seq_recv"`
 		LeftSeqRecv  *bitmap.JSONBitmap `json:"left_seq_recv"`
+		RightCache   *TableCache        `json:"right_cache,omitempty"`
 	}
 	w := wrapper{
 		RightSeqRecv: &bitmap.JSONBitmap{Bitmap: js.RightSeqRecv},
 		LeftSeqRecv:  &bitmap.JSONBitmap{Bitmap: js.LeftSeqRecv},
+		RightCache:   js.RightCache,
 	}
 	return json.Marshal(w)
 }
@@ -45,6 +47,7 @@ func (js *JoinerState) Deserialize(data []byte) error {
 	type wrapper struct {
 		RightSeqRecv *bitmap.JSONBitmap `json:"right_seq_recv"`
 		LeftSeqRecv  *bitmap.JSONBitmap `json:"left_seq_recv"`
+		RightCache   *TableCache        `json:"right_cache,omitempty"`
 	}
 	var w wrapper
 	if err := json.Unmarshal(data, &w); err != nil {
@@ -59,6 +62,12 @@ func (js *JoinerState) Deserialize(data []byte) error {
 		js.LeftSeqRecv = w.LeftSeqRecv.Bitmap
 	} else {
 		js.LeftSeqRecv = bitmap.New()
+	}
+	// restore right cache if present
+	if w.RightCache != nil {
+		js.RightCache = w.RightCache
+	} else {
+		js.RightCache = nil
 	}
 	return nil
 }

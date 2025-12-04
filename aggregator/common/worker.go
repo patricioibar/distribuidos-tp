@@ -67,8 +67,17 @@ func NewAggregatorWorker(
 
 func (aw *AggregatorWorker) Start() {
 	// blocks until queue is deleted or closed
-	if err := aw.input.StartConsuming(aw.callback); err != nil {
-		log.Fatalf("Failed to start consuming messages: %v", err)
+	if aw.state.GetState().(*p.PersistentState).IsRecovering {
+		consumer, producer, shouldReturn := createRecoveryProducerAndConsumer(aw)
+		if shouldReturn {
+			return
+		}
+		aw.waitForRecoveryRequests(producer, consumer)
+		close(aw.closeChan)
+	} else {
+		if err := aw.input.StartConsuming(aw.callback); err != nil {
+			log.Fatalf("Failed to start consuming messages: %v", err)
+		}
 	}
 	<-aw.closeChan
 	aw.Close()

@@ -16,6 +16,7 @@ const (
 	ReceiveAggregatorBatchTypeID byte = 203
 	AddAggregatorDoneTypeID      byte = 204
 	RevertBatchAggregationTypeID byte = 205
+	SetRecoveringTypeID          byte = 206
 )
 
 type AggregateBatchOp struct {
@@ -289,6 +290,50 @@ func decodeRevertBatchAggregationOp(data []byte) (pers.Operation, error) {
 	return &RevertBatchAggregationOp{ID: data[0], Seq: seq, Aggregator: p.Aggregator, Data: p.Data}, nil
 }
 
+type SetRecoveringOp struct {
+	ID    byte
+	Seq   uint64
+	Value bool
+}
+
+func NewSetRecoveringOp(seq uint64, value bool) *SetRecoveringOp {
+	return &SetRecoveringOp{ID: SetRecoveringTypeID, Seq: seq, Value: value}
+}
+func (op *SetRecoveringOp) TypeID() byte                { return op.ID }
+func (op *SetRecoveringOp) SeqNumber() uint64           { return op.Seq }
+func (op *SetRecoveringOp) ApplyTo(st pers.State) error { return st.Apply(op) }
+func (op *SetRecoveringOp) Encode() ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	if err := buf.WriteByte(op.TypeID()); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.LittleEndian, op.Seq); err != nil {
+		return nil, err
+	}
+	var valByte byte = 0
+	if op.Value {
+		valByte = 1
+	}
+	if err := buf.WriteByte(valByte); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+func decodeStartRecoveringOp(data []byte) (pers.Operation, error) {
+	if len(data) < 1+8+1 {
+		return nil, fmt.Errorf("invalid startRecovering op length: %d", len(data))
+	}
+	seq := binary.LittleEndian.Uint64(data[1:9])
+	valByte := data[9]
+	var value bool
+	if valByte == 1 {
+		value = true
+	} else {
+		value = false
+	}
+	return &SetRecoveringOp{ID: data[0], Seq: seq, Value: value}, nil
+}
+
 func init() {
 	// register operations
 	pers.RegisterOperation(AggregateBatchTypeID, decodeAggregateBatchOp)
@@ -296,4 +341,5 @@ func init() {
 	pers.RegisterOperation(ReceiveAggregatorBatchTypeID, decodeReceiveAggregatorBatchOp)
 	pers.RegisterOperation(AddAggregatorDoneTypeID, decodeAddAggregatorDoneOp)
 	pers.RegisterOperation(RevertBatchAggregationTypeID, decodeRevertBatchAggregationOp)
+	pers.RegisterOperation(SetRecoveringTypeID, decodeStartRecoveringOp)
 }

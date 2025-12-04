@@ -12,6 +12,7 @@ type PersistentState struct {
 	AggregatedData    map[string][]interface{}
 	AggregatedBatches *bitmap.Bitmap
 	EmptyBatches      *bitmap.Bitmap
+	IsRecovering      bool
 
 	// Reducer specific
 	ReceivedAggregatorsBatches map[string]*bitmap.Bitmap
@@ -24,6 +25,7 @@ func NewPersistentState() *PersistentState {
 		AggregatedData:             make(map[string][]interface{}),
 		AggregatedBatches:          bitmap.New(),
 		EmptyBatches:               bitmap.New(),
+		IsRecovering:               false,
 		ReceivedAggregatorsBatches: make(map[string]*bitmap.Bitmap),
 		AggregatorsDone:            make([]string, 0),
 		DuplicatedBatches:          make(map[string]*bitmap.Bitmap),
@@ -33,6 +35,7 @@ func NewPersistentState() *PersistentState {
 func (s *PersistentState) Serialize() ([]byte, error) {
 	type snapshot struct {
 		AggregatedData             map[string][]interface{}      `json:"aggregated_data"`
+		IsRecovering               bool                          `json:"is_recovering"`
 		AggregatedBatches          *bitmap.JSONBitmap            `json:"aggregated_batches"`
 		EmptyBatches               *bitmap.JSONBitmap            `json:"empty_batches"`
 		ReceivedAggregatorsBatches map[string]*bitmap.JSONBitmap `json:"received_aggregators_batches"`
@@ -42,6 +45,7 @@ func (s *PersistentState) Serialize() ([]byte, error) {
 
 	snap := snapshot{
 		AggregatedData:             s.AggregatedData,
+		IsRecovering:               s.IsRecovering,
 		AggregatedBatches:          &bitmap.JSONBitmap{Bitmap: s.AggregatedBatches},
 		EmptyBatches:               &bitmap.JSONBitmap{Bitmap: s.EmptyBatches},
 		DuplicatedBatches:          make(map[string]*bitmap.JSONBitmap, len(s.DuplicatedBatches)),
@@ -64,6 +68,7 @@ func (s *PersistentState) Deserialize(data []byte) error {
 	}
 	type snapshot struct {
 		AggregatedData             map[string][]interface{}      `json:"aggregated_data"`
+		IsRecovering               bool                          `json:"is_recovering"`
 		AggregatedBatches          *bitmap.JSONBitmap            `json:"aggregated_batches"`
 		EmptyBatches               *bitmap.JSONBitmap            `json:"empty_batches"`
 		ReceivedAggregatorsBatches map[string]*bitmap.JSONBitmap `json:"received_aggregators_batches"`
@@ -82,6 +87,8 @@ func (s *PersistentState) Deserialize(data []byte) error {
 	} else {
 		s.AggregatedData = make(map[string][]interface{})
 	}
+	// Restore IsRecovering flag
+	s.IsRecovering = snap.IsRecovering
 	if snap.AggregatedBatches != nil && snap.AggregatedBatches.Bitmap != nil {
 		s.AggregatedBatches = snap.AggregatedBatches.Bitmap
 	} else {
@@ -157,6 +164,13 @@ func (s *PersistentState) Apply(op pers.Operation) error {
 			return fmt.Errorf("unexpected op type for typeID %d", RevertBatchAggregationTypeID)
 		}
 		return s.revertBatchAggregationOp(opp)
+	case SetRecoveringTypeID:
+		opp, ok := op.(*SetRecoveringOp)
+		if !ok {
+			return fmt.Errorf("unexpected op type for typeID %d", RevertBatchAggregationTypeID)
+		}
+		s.IsRecovering = opp.Value
+		return nil
 	default:
 		return fmt.Errorf("unknown operation type ID: %d", op.TypeID())
 	}

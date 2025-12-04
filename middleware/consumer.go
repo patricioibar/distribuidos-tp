@@ -129,6 +129,12 @@ func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageM
 	var startErr error
 
 	c.startOnce.Do(func() {
+		c.channel.Qos(
+			1,     // prefetch count
+			0,     // prefetch size
+			false, // global
+		)
+
 		deliveries, err := c.channel.Consume(
 			c.name, // queue
 			"",     // consumer

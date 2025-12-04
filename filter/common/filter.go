@@ -177,7 +177,7 @@ func (f *FilterWorker) getFilterFunction(filterType string) (mw.OnMessageCallbac
 	default:
 		return nil, errors.New("unknown filter type")
 	}
-
+	dupEOFCount := 0
 	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		jsonData := string(consumeChannel.Body)
 		var receivedMsg ic.Message
@@ -201,7 +201,10 @@ func (f *FilterWorker) getFilterFunction(filterType string) (mw.OnMessageCallbac
 			if shouldAck {
 				done <- nil
 			} else {
-				log.Warningf("Duplicated End Signal")
+				dupEOFCount++
+				if dupEOFCount%500 == 0 {
+					log.Warningf("Received %d Duplicated End Signal", dupEOFCount)
+				}
 				done <- &mw.MessageMiddlewareError{Code: 0, Msg: "end signal contains this worker already"}
 				// sleep?
 			}

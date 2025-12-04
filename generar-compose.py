@@ -73,7 +73,7 @@ def add_itemsAggregator_service(nodes: int, monitors_count: int) -> str:
       INPUT_NAME: "filtered-years-items"
       OUTPUT_NAME: "items-reducer_input"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -109,7 +109,7 @@ def add_itemsReducer_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_NAME: "items-reducer_output"
       LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
-      OUTPUT_BATCH_SIZE: 50
+      OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -143,7 +143,7 @@ def add_itemNames_joiner(monitors_count: int) -> str:
       LEFT_INPUT_NAME: "menu_items"
       OUTPUT_NAME: "query2_sink"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -179,7 +179,7 @@ def add_tpvAggregator_service(nodes: int, monitors_count: int) -> str:
       INPUT_NAME: "filtered-transactions-yearhour"
       OUTPUT_NAME: "tpv-reducer_input"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -214,7 +214,7 @@ def add_tpvReducer_service(nodes: int, monitors_count: int) -> str:
       INPUT_NAME: "tpv-reducer_input"
       OUTPUT_NAME: "tpv-reducer_output"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -250,7 +250,7 @@ def add_tpv_joiner(nodes: int, monitors_count: int) -> str:
       LEFT_INPUT_NAME: "tpv-reducer_output"
       OUTPUT_NAME: "query3_sink"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -287,7 +287,7 @@ def add_topUserAggregator_service(nodes: int, monitors_count: int) -> str:
       INPUT_NAME: "filtered-transactions-year"
       OUTPUT_NAME: "topuser-reducer_input"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -323,7 +323,7 @@ def add_topUserReducer_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_NAME: "topuser-reducer_output"
       LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"count_transaction_id\",\"largest\":true}]"
-      OUTPUT_BATCH_SIZE: 3
+      OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -360,7 +360,7 @@ def add_topUserBirthdate_joiner(nodes: int, monitors_count: int) -> str:
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
@@ -395,7 +395,7 @@ def add_topUserStoreName_joiner(monitors_count: int) -> str:
       LEFT_INPUT_NAME: "stores"
       OUTPUT_NAME: "query4_sink"
       LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
+      OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:

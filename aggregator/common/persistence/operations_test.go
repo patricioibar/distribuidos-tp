@@ -140,3 +140,22 @@ func TestRevertBatchAggregationOp_EncodeDecode(t *testing.T) {
 		t.Fatalf("data mismatch: got=%#v want=%#v", got.Data, data)
 	}
 }
+
+func TestSetRecoveringOp_EncodeDecode(t *testing.T) {
+	op := NewSetRecoveringOp(15, true)
+	b, err := op.Encode()
+	if err != nil {
+		t.Fatalf("encode error: %v", err)
+	}
+	gotI, err := decodeStartRecoveringOp(b)
+	if err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	got := gotI.(*SetRecoveringOp)
+	if got.Seq != 15 || got.ID != SetRecoveringTypeID {
+		t.Fatalf("header mismatch: got seq=%d id=%d", got.Seq, got.ID)
+	}
+	if got.Value != true {
+		t.Fatalf("value mismatch: got=%v want=true", got.Value)
+	}
+}

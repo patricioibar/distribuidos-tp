@@ -72,7 +72,14 @@ func (aw *AggregatorWorker) reducerPassToNextStage() {
 	aw.processedBatches().RemoveRange(0, nextBatchToSend) // medio feo pero sirve
 	log.Debug("Sending processed batches")
 	aw.sendProcessedBatches()
-	eofMsg, _ := ic.NewEndSignal([]string{}, nextBatchToSend).Marshal()
+
+	var eofSeqNum uint64
+	if aw.processedBatches().GetCardinality() > 0 {
+		eofSeqNum = aw.processedBatches().Maximum()
+	} else {
+		eofSeqNum = 1
+	}
+	eofMsg, _ := ic.NewEndSignal([]string{}, eofSeqNum).Marshal()
 	if err := aw.output.Send(eofMsg); err != nil {
 		log.Errorf("Failed to send end signal message: %v", err)
 	}
