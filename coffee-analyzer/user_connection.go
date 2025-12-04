@@ -96,6 +96,7 @@ func (ca *CoffeeAnalyzer) Start() {
 		}
 		if id == uuid.Nil {
 			ca.handleNewJobRequest(client_socket)
+			continue
 		}
 
 		go ca.handleConnection(client_socket, id)
@@ -121,6 +122,7 @@ func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket, id uuid.UUID
 	if communication.IsResponseRequest(firstBatch) {
 		log.Infof("Received responses request")
 		ca.handleGetResponsesRequest(s, id)
+		return
 	}
 
 	ca.handleTableUpload(firstBatch, s, id)
@@ -265,8 +267,9 @@ func (ca *CoffeeAnalyzer) jobCleanupService() {
 		ca.jobsStateMutex.Lock()
 		sessions := ca.jobsState.GetState().(*jobsessions.JobSessionsState).GetAllSessions()
 		for id, session := range sessions {
-
-			if currentTime-session.GetLastActivity() > GRACE_PERIOD_SECONDS && session.IsUploadFinish() {
+			period := currentTime - session.GetLastActivity()
+			log.Infof("Checking job session %v: time since last activity %v, upload finished: %v", id, period, session.IsUploadFinish())
+			if period > GRACE_PERIOD_SECONDS && session.IsUploadFinish() {
 				log.Infof("Cleaning up job session %v due to inactivity", id)
 				ca.cleanupJob(*session, id)
 			}
