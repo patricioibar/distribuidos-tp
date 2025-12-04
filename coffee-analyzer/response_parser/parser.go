@@ -105,6 +105,8 @@ func (rp *ResponseParser) Start(s *c.Socket) {
 		rp.querySinks[i].consumer.Close()
 	}
 	close(stopMonitor)
+	state := rp.jobsState.GetState().(*jobsessions.JobSessionsState)
+	state.RemoveSession(rp.jobID)
 	log.Infof("[%s] All queries done, closing response parser", rp.jobID)
 	s.Close()
 }

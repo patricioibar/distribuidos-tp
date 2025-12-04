@@ -279,6 +279,8 @@ func (ca *CoffeeAnalyzer) jobCleanupService() {
 					ca.config.MiddlewareUsername,
 					ca.config.MiddlewarePassword,
 				)
+				state := ca.jobsState.GetState().(*jobsessions.JobSessionsState)
+				state.RemoveSession(id)
 			}
 		}
 		ca.jobsStateMutex.Unlock()
@@ -331,6 +333,8 @@ func (ca *CoffeeAnalyzer) RestoreAndCleanupInvalidJobs() error {
 				ca.config.MiddlewareUsername,
 				ca.config.MiddlewarePassword,
 			)
+			state := ca.jobsState.GetState().(*jobsessions.JobSessionsState)
+			state.RemoveSession(id)
 		}
 	}
 	return nil
