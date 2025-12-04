@@ -31,7 +31,7 @@ services:
     volumes:
       - ./coffee-analyzer/config.json:/app/config.json
     environment:
-      TOTAL_WORKERS: 28
+      TOTAL_WORKERS: 32
       MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
@@ -54,38 +54,6 @@ services:
   analyst-1:
     image: analyst:latest
     container_name: analyst-1
-    build:
-      context: .
-      dockerfile: ./analyst/Dockerfile
-    volumes:
-      - ./analyst/config.json:/app/config.json
-      - ./analyst/.data/:/app/.data/
-      - ./analyst/results/:/app/results/
-    depends_on:
-      coffee-analyzer:
-        condition: service_healthy
-    networks:
-      - coffee_analysis_net
-
-  analyst-2:
-    image: analyst:latest
-    container_name: analyst-2
-    build:
-      context: .
-      dockerfile: ./analyst/Dockerfile
-    volumes:
-      - ./analyst/config.json:/app/config.json
-      - ./analyst/.data/:/app/.data/
-      - ./analyst/results/:/app/results/
-    depends_on:
-      coffee-analyzer:
-        condition: service_healthy
-    networks:
-      - coffee_analysis_net
-
-  analyst-3:
-    image: analyst:latest
-    container_name: analyst-3
     build:
       context: .
       dockerfile: ./analyst/Dockerfile
@@ -279,7 +247,7 @@ services:
     environment:
       LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyAmount-1"
-      WORKERS_COUNT: "2"
+      WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyAmount"
       CONSUMER_NAME: "transactions-TbyAmount-consumer"
       SOURCE_QUEUE: "filtered-transactions-yearhour"
@@ -307,7 +275,35 @@ services:
     environment:
       LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyAmount-2"
-      WORKERS_COUNT: "2"
+      WORKERS_COUNT: "3"
+      FILTER_TYPE: "TbyAmount"
+      CONSUMER_NAME: "transactions-TbyAmount-consumer"
+      SOURCE_QUEUE: "filtered-transactions-yearhour"
+      OUTPUT_EXCHANGE: "query1_sink"
+      MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
+    networks:
+      - coffee_analysis_net
+
+  filter-TbyAmount-3:
+    image: filter:latest
+    build:
+      context: .
+      dockerfile: filter/Dockerfile
+    container_name: filter-TbyAmount-3
+    environment:
+      LOG_LEVEL: "INFO"
+      FILTER_ID: "filter-TbyAmount-3"
+      WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyAmount"
       CONSUMER_NAME: "transactions-TbyAmount-consumer"
       SOURCE_QUEUE: "filtered-transactions-yearhour"
@@ -514,7 +510,7 @@ services:
       dockerfile: aggregator/Dockerfile
     environment:
       WORKER_ID: "items-reducer"
-      WORKERS_COUNT: 1
+      WORKERS_COUNT: 3
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       GROUP_BY: "[\"year-month\",\"item_id\"]"
       AGGREGATIONS: "[{\"col\":\"sum_subtotal\",\"func\":\"sum\"},{\"col\":\"sum_quantity\",\"func\":\"sum\"}]"
@@ -673,7 +669,7 @@ services:
       dockerfile: aggregator/Dockerfile
     environment:
       WORKER_ID: "tpv-reducer"
-      WORKERS_COUNT: 1
+      WORKERS_COUNT: 3
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       GROUP_BY: "[\"year\",\"semester\",\"store_id\"]"
       AGGREGATIONS: "[{\"col\":\"sum_final_amount\",\"func\":\"sum\"}]"
@@ -893,7 +889,7 @@ services:
       dockerfile: aggregator/Dockerfile
     environment:
       WORKER_ID: "topuser-reducer"
-      WORKERS_COUNT: 1
+      WORKERS_COUNT: 3
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       GROUP_BY: "[\"store_id\",\"user_id\"]"
       AGGREGATIONS: "[{\"col\":\"count_transaction_id\",\"func\":\"sum\"}]"
@@ -926,7 +922,7 @@ services:
       dockerfile: joiner/Dockerfile
     environment:
       WORKER_ID: "topuser-birthdate-joiner-1"
-      WORKERS_COUNT: 5
+      WORKERS_COUNT: 3
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
       QUERY_NAME: "topuser"
@@ -957,7 +953,7 @@ services:
       dockerfile: joiner/Dockerfile
     environment:
       WORKER_ID: "topuser-birthdate-joiner-2"
-      WORKERS_COUNT: 5
+      WORKERS_COUNT: 3
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
       QUERY_NAME: "topuser"
@@ -988,69 +984,7 @@ services:
       dockerfile: joiner/Dockerfile
     environment:
       WORKER_ID: "topuser-birthdate-joiner-3"
-      WORKERS_COUNT: 5
-      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
-      JOIN_KEY: "user_id"
-      QUERY_NAME: "topuser"
-      RIGHT_INPUT_NAME: "topuser-reducer_output"
-      LEFT_INPUT_NAME: "users"
-      OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
-      OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
-      MONITORS_COUNT: 3
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      monitor-1:
-        condition: service_started
-      monitor-2:
-        condition: service_started
-      monitor-3:
-        condition: service_started
-    networks:
-      - coffee_analysis_net
-
-  topuser-birthdate-joiner-4:
-    image: joiner:latest
-    container_name: topuser-birthdate-joiner-4
-    build:
-      context: .
-      dockerfile: joiner/Dockerfile
-    environment:
-      WORKER_ID: "topuser-birthdate-joiner-4"
-      WORKERS_COUNT: 5
-      MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
-      JOIN_KEY: "user_id"
-      QUERY_NAME: "topuser"
-      RIGHT_INPUT_NAME: "topuser-reducer_output"
-      LEFT_INPUT_NAME: "users"
-      OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "INFO"
-      OUTPUT_BATCH_SIZE: 200
-      OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
-      MONITORS_COUNT: 3
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      monitor-1:
-        condition: service_started
-      monitor-2:
-        condition: service_started
-      monitor-3:
-        condition: service_started
-    networks:
-      - coffee_analysis_net
-
-  topuser-birthdate-joiner-5:
-    image: joiner:latest
-    container_name: topuser-birthdate-joiner-5
-    build:
-      context: .
-      dockerfile: joiner/Dockerfile
-    environment:
-      WORKER_ID: "topuser-birthdate-joiner-5"
-      WORKERS_COUNT: 5
+      WORKERS_COUNT: 3
       MIDDLEWARE_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
       JOIN_KEY: "user_id"
       QUERY_NAME: "topuser"

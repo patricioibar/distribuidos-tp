@@ -586,14 +586,14 @@ services:
 nodes_count = {
     "filter-TbyYear": 3,
     "filter-TbyHour": 3,
-    "filter-TbyAmount": 2,
+    "filter-TbyAmount": 3,
     "filter-TIbyYear": 3,
     "items-aggregator": 3,
     "tpv-aggregator": 3,
     "tpv-joiner": 3,
     "topuser-aggregator": 3,
-    "topuser-birthdate-joiner": 5,
-    "analyst": 3,
+    "topuser-birthdate-joiner": 3,
+    "analyst": 1,
     "monitor": 3,
 }
 
