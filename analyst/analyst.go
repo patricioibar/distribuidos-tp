@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"os"
 
+	uuid "github.com/google/uuid"
 	"github.com/op/go-logging"
 )
 
@@ -31,6 +33,10 @@ func InitLogger(logLevel string) error {
 }
 
 func main() {
+	restoreFlag := flag.String("restore", "", "UUID of the job session to restore")
+	reducedFlag := flag.Bool("reduced", false, "Send data from .data/reduced instead of .data/complete")
+	flag.Parse()
+
 	config, err := InitConfig()
 	log.Infof("Loaded config: %+v", config)
 	if err != nil {
@@ -41,12 +47,33 @@ func main() {
 		log.Criticalf("%s", err)
 	}
 
-	serverConn := NewServerConnection(config)
+	baseDir := config.DataDir
+	if *reducedFlag {
+		config.DataDir = baseDir + "/reduced"
+		log.Infof("Using reduced dataset: %s", config.DataDir)
+	} else {
+		config.DataDir = baseDir + "/complete"
+		log.Infof("Using complete dataset: %s", config.DataDir)
+	}
+
+	var restoreID *uuid.UUID
+	if *restoreFlag != "" {
+		parsedID, err := uuid.Parse(*restoreFlag)
+		if err != nil {
+			log.Criticalf("invalid restore UUID %q: %v", *restoreFlag, err)
+		}
+		restoreID = &parsedID
+		log.Infof("Restoring session with UUID %s", restoreID.String())
+	}
+
+	serverConn := NewServerConnection(config, restoreID)
 
 	go serverConn.getResponses()
-	for _, table := range config.Tables {
-		log.Infof("Sending dataset: %s with columns: %v", table.Name, table.Columns)
-		go serverConn.sendDataset(table, config.DataDir)
+	if restoreID == nil {
+		for _, table := range config.Tables {
+			log.Infof("Sending dataset: %s with columns: %v", table.Name, table.Columns)
+			go serverConn.sendDataset(table, config.DataDir)
+		}
 	}
 
 	serverConn.WaitForResults()

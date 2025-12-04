@@ -4,6 +4,7 @@ import (
 	"communication"
 	"encoding/json"
 	"os"
+	"time"
 )
 
 func sendRowsTroughSocket(rows [][]string, socket communication.Socket) {
@@ -15,6 +16,9 @@ func sendRowsTroughSocket(rows [][]string, socket communication.Socket) {
 
 	err = socket.SendBatch(data)
 	if err != nil {
+		if !socket.IsAlive(0 * time.Second) {
+			log.Fatalf("Connection to Coffee Analyzer lost while sending tables. Exiting.")
+		}
 		log.Errorf("Failed to send batch: %v", err)
 		return
 	}

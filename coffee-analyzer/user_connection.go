@@ -51,7 +51,7 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 		log.Fatalf("Failed to create state log: %v", err)
 	}
 
-	jobsState, err := persistance.NewStateManager(jobSessionState, stateLog, PERSISTANCE_INTERVAL)
+	jobsState, err := persistance.LoadStateManager(jobSessionState, stateLog, PERSISTANCE_INTERVAL)
 	if err != nil {
 		log.Fatalf("Failed to create state manager: %v", err)
 	}
@@ -71,11 +71,16 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 }
 
 func (ca *CoffeeAnalyzer) Start() {
+	err := ca.RestoreAndCleanupInvalidJobs()
+	if err != nil {
+		log.Fatalf("Failed to restore jobs state: %v", err)
+	}
+
 	listener_socket := communication.Socket{}
 
 	ca.StartJobCleanupService()
 
-	err := listener_socket.BindAndListen(ca.Address)
+	err = listener_socket.BindAndListen(ca.Address)
 	if err != nil {
 		log.Fatalf("Failed to bind and listen: %v", err)
 		return
@@ -103,15 +108,6 @@ func (ca *CoffeeAnalyzer) Start() {
 
 		go ca.handleConnection(client_socket, id)
 	}
-}
-
-func (ca *CoffeeAnalyzer) Restart() {
-	log.Infof("Restarting Coffee Analyzer")
-	err := ca.RestoreAndCleanupInvalidJobs()
-	if err != nil {
-		log.Fatalf("Failed to restore jobs state: %v", err)
-	}
-	ca.Start()
 }
 
 func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket, id uuid.UUID) {
@@ -188,6 +184,15 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	log.Infof("Finished receiving table: %v", table)
 
 	err = ca.logTableUploadFinish(jobID, table)
+	ca.jobsStateMutex.Lock()
+	session, ok := ca.jobsState.GetState().(*jobsessions.JobSessionsState).GetSession(jobID)
+	if ok {
+		if session.IsUploadFinish() {
+			log.Infof("Job %v upload finished", jobID)
+		}
+	}
+	ca.jobsStateMutex.Unlock()
+
 	if duplicated > 0 {
 		log.Infof("Sent %d duplicated batches for table %v", duplicated, table)
 	}
@@ -321,8 +326,11 @@ func (ca *CoffeeAnalyzer) RestoreAndCleanupInvalidJobs() error {
 	defer ca.jobsStateMutex.Unlock()
 	err := ca.jobsState.Restore()
 	if err != nil {
+		log.Errorf("Failed to restore job sessions state: %v", err)
 		return err
 	}
+	// print the restores state
+	log.Infof("Restored job sessions state: %v", ca.jobsState.GetState())
 	sessions := ca.jobsState.GetState().(*jobsessions.JobSessionsState).GetAllSessions()
 	for id, session := range sessions {
 		if !session.IsUploadFinish() {
