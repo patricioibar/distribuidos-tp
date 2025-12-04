@@ -489,7 +489,7 @@ def add_monitors(num_monitors: int) -> str:
       dockerfile: ./monitor/Dockerfile
     environment:
       MONITOR_ID: monitor-{i}
-      PEERS_COUNT: {num_monitors}
+      MONITORS_COUNT: {num_monitors}
       PORT: 9000
     depends_on:
       rabbitmq:
@@ -531,10 +531,10 @@ def add_analyst_service(nodes: int) -> str:
     return result
 
 def generate_compose_file(fileName: str, nodes_count: dict):
-    num_filter_years = nodes_count.get("filter-years", 1)
-    num_filter_hours = nodes_count.get("filter-hours", 1)
-    num_filter_amount = nodes_count.get("filter-amount", 1)
-    num_filter_items = nodes_count.get("filter-items", 1)
+    num_filter_years = nodes_count.get("filter-TbyYear", 1)
+    num_filter_hours = nodes_count.get("filter-TbyHour", 1)
+    num_filter_amount = nodes_count.get("filter-TbyAmount", 1)
+    num_filter_items = nodes_count.get("filter-TIbyYear", 1)
     num_items_aggregators = nodes_count.get("items-aggregator", 1)
     num_tpv_aggregators = nodes_count.get("tpv-aggregator", 1)
     num_tpv_joiners = nodes_count.get("tpv-joiner", 1)
@@ -583,10 +583,10 @@ services:
         f.write(compose_content)
 
 nodes_count = {
-    "filter-years": 3,
-    "filter-hours": 3,
-    "filter-amount": 2,
-    "filter-items": 3,
+    "filter-TbyYear": 3,
+    "filter-TbyHour": 3,
+    "filter-TbyAmount": 2,
+    "filter-TIbyYear": 3,
     "items-aggregator": 3,
     "tpv-aggregator": 3,
     "tpv-joiner": 3,

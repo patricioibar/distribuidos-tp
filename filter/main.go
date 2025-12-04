@@ -52,9 +52,7 @@ func main() {
 	removeFromMap := make(chan string, 10)
 	handleNewIncommingJob := getHandleIncommingJob(config, runningFilters, &runningFiltersLock, removeFromMap)
 
-	//go communication.SendHeartBeat(config.FilterId)
-
-	go SendHeartbeatToMonitors(config)
+	go communication.SendHeartbeatToMonitors("WORKER", config.FilterId, config.MonitorsCount)
 
 	go func() {
 		if err := jobAnnouncements.StartConsuming(handleNewIncommingJob); err != nil {
@@ -141,7 +139,6 @@ func SendHeartbeatToMonitors(config Config) {
 	addresses, _ := communication.ResolveAddresses(config.FilterId, config.MonitorsCount)
 	t := time.NewTicker(250 * time.Millisecond)
 	for range t.C {
-		//sendToAll(conn, fmt.Sprintf("%s:%s", MSG_MONITOR, config.MonitorId), config)
 		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", "WORKER", config.FilterId))
 	}
 }

@@ -2,13 +2,11 @@ package main
 
 import (
 	"communication"
-	"fmt"
 	"os"
 	"os/signal"
 	"strconv"
 	"sync"
 	"syscall"
-	"time"
 
 	"joiner/common"
 
@@ -65,7 +63,9 @@ func main() {
 	}
 	callback := initializeJoinerJob(config, jobsMap, &jobsMapLock, removeFromMap)
 
-	go SendHeartbeatToMonitors(config)
+	//go SendHeartbeatToMonitors(config)
+	monitorsCountInt, _ := strconv.Atoi(config.MonitorsCount)
+	go communication.SendHeartbeatToMonitors("WORKER", config.WorkerId, monitorsCountInt)
 
 	go func() {
 		if err := incomingJobs.StartConsuming(callback); err != nil {
@@ -87,16 +87,6 @@ func main() {
 	}
 	jobsMapLock.Unlock()
 	close(removeFromMap)
-}
-
-func SendHeartbeatToMonitors(config *common.Config) {
-	monitorsCountInt, _ := strconv.Atoi(config.MonitorsCount)
-	addresses, _ := communication.ResolveAddresses(config.WorkerId, monitorsCountInt)
-	t := time.NewTicker(250 * time.Millisecond)
-	for range t.C {
-		//sendToAll(conn, fmt.Sprintf("%s:%s", MSG_MONITOR, config.MonitorId), config)
-		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", "WORKER", config.WorkerId))
-	}
 }
 
 func removeDoneJobs(jobsMap map[string]*common.JoinerWorker, mutex *sync.Mutex, removeFromMap chan string) {

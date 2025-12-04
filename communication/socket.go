@@ -178,25 +178,19 @@ func ResolveAddresses(nodeId string, monitorsCount int, addressList ...int) ([]*
 				continue
 			}
 			addrStr := fmt.Sprintf("%s:9000", monitorId)
-			//fmt.Printf("sending message to monitor %s\n", addrStr)
 			addr, _ := net.ResolveUDPAddr("udp", addrStr)
 			monitorAddresses = append(monitorAddresses, addr)
 		}
 	}
 
-	//fmt.Printf("%v\n", monitorAddresses)
 	return monitorAddresses, nil
 }
 
 func SendMessageToMonitors(addresses []*net.UDPAddr, msg string) {
-	//falta cerrar la conexion en caso de ctrl+c?
-	//fmt.Printf("MONITORS COUNT: %d\n", monitorsCount)
-	//addr, _ := net.ResolveUDPAddr("udp", "monitor-1:9000")
-
 	for _, addr := range addresses {
 		conn, err := net.DialUDP("udp", nil, addr)
 		if err != nil {
-			fmt.Println("error dialing UDP:", err)
+			fmt.Printf("error dialing UDP to address: %v %s with message: %s \n", err, addr.String(), msg)
 			continue
 		}
 		msg := []byte(msg)
@@ -205,5 +199,18 @@ func SendMessageToMonitors(addresses []*net.UDPAddr, msg string) {
 			fmt.Println("error sending message:", err)
 		}
 		conn.Close()
+	}
+}
+
+func (s *Socket) GetRemoteAddress() string {
+	return s.conn.RemoteAddr().String()
+}
+
+func SendHeartbeatToMonitors(heartBeat string, nodeID string, monitorsCount int) {
+	t := time.NewTicker(250 * time.Millisecond)
+	addresses, _ := ResolveAddresses(nodeID, monitorsCount)
+
+	for range t.C {
+		SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", heartBeat, nodeID))
 	}
 }

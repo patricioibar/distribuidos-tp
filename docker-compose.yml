@@ -1114,7 +1114,7 @@ services:
       dockerfile: ./monitor/Dockerfile
     environment:
       MONITOR_ID: monitor-1
-      PEERS_COUNT: 3
+      MONITORS_COUNT: 3
       PORT: 9000
     depends_on:
       rabbitmq:
@@ -1137,7 +1137,7 @@ services:
       dockerfile: ./monitor/Dockerfile
     environment:
       MONITOR_ID: monitor-2
-      PEERS_COUNT: 3
+      MONITORS_COUNT: 3
       PORT: 9000
     depends_on:
       rabbitmq:
@@ -1160,7 +1160,7 @@ services:
       dockerfile: ./monitor/Dockerfile
     environment:
       MONITOR_ID: monitor-3
-      PEERS_COUNT: 3
+      MONITORS_COUNT: 3
       PORT: 9000
     depends_on:
       rabbitmq:

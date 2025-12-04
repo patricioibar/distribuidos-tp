@@ -4,6 +4,7 @@ import (
 	responseparser "cofee-analyzer/response_parser"
 	"encoding/json"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"communication"
@@ -55,6 +56,9 @@ func (ca *CoffeeAnalyzer) Start() {
 		return
 	}
 	defer listener_socket.Close()
+
+	monitorsCount, _ := strconv.Atoi(ca.monitorsCount)
+	go communication.SendHeartbeatToMonitors("WORKER", "coffee-analyzer", monitorsCount)
 
 	log.Infof("Listening on %s", ca.Address)
 

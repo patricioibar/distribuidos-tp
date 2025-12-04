@@ -16,39 +16,35 @@ import (
 	"github.com/docker/docker/client"
 )
 
-// ---------------- Config ---------------- //
 type Config struct {
-	Port         int
-	MonitorId    string // ID of THIS monitor node
-	MonitorIdInt int    // ID of THIS monitor node as int
-	PeersCount   int    // total number of monitors
+	Port          int
+	MonitorId     string
+	MonitorIdInt  int
+	monitorsCount int
 }
 
 func getConfig() Config {
 	monitorId := os.Getenv("MONITOR_ID")
 	monitorIdInt, _ := strconv.Atoi(strings.Split(monitorId, "-")[1])
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
-	peersCount, _ := strconv.Atoi(os.Getenv("PEERS_COUNT"))
+	monitorsCount, _ := strconv.Atoi(os.Getenv("MONITORS_COUNT"))
 
 	return Config{
-		Port:         port,
-		MonitorId:    monitorId,
-		MonitorIdInt: monitorIdInt,
-		PeersCount:   peersCount,
+		Port:          port,
+		MonitorId:     monitorId,
+		MonitorIdInt:  monitorIdInt,
+		monitorsCount: monitorsCount,
 	}
 }
 
-// ---------------- Global State ---------------- //
-var (
-	mu sync.Mutex
-
-	monitorLastSeen = map[string]time.Time{} // monitorID → lastSeen
-	workerLastSeen  = map[string]time.Time{} // workerName → lastSeen
-
+type Monitor struct {
+	mu                    sync.Mutex
+	monitorLastSeen       map[string]time.Time
+	workerLastSeen        map[string]time.Time
 	currentLeader         string
 	electionInProgress    bool
-	okElectionMessageChan = make(chan bool, 10) // Buffered to prevent blocking
-)
+	okElectionMessageChan chan bool
+}
 
 const (
 	MSG_MONITOR     = "MONITOR"
@@ -62,6 +58,15 @@ func main() {
 	config := getConfig()
 	log.Printf("Node %s starting...", config.MonitorId)
 
+	monitor := &Monitor{
+		mu:                    sync.Mutex{},
+		monitorLastSeen:       make(map[string]time.Time),
+		workerLastSeen:        make(map[string]time.Time),
+		okElectionMessageChan: make(chan bool, 10),
+		currentLeader:         "",
+		electionInProgress:    false,
+	}
+
 	addr := net.UDPAddr{
 		IP:   net.ParseIP("0.0.0.0"),
 		Port: config.Port,
@@ -73,84 +78,74 @@ func main() {
 	}
 	defer conn.Close()
 
-	go listenUDP(conn, config)
-	go sendMonitorHeartbeat(config)
+	go listenUDP(conn, config, monitor)
+	go communication.SendHeartbeatToMonitors(MSG_MONITOR, config.MonitorId, config.monitorsCount)
 
-	// Initial election after brief delay
+	// espero un poco para la primera eleccion
 	time.Sleep(500 * time.Millisecond)
-	go startElection(config)
+	startElection(config, monitor)
 
 	ticker := time.NewTicker(500 * time.Millisecond)
 	timeout := 1 * time.Second
 
 	for range ticker.C {
-		mu.Lock()
+		monitor.mu.Lock()
 
-		// ---- MONITOR FAILURE DETECTION ----
-		for monitorID, last := range monitorLastSeen {
+		// resolver fallas de monitores
+		for monitorID, last := range monitor.monitorLastSeen {
 			if monitorID == config.MonitorId {
-				continue // skip myself
+				continue
 			}
 
 			if time.Since(last) > timeout {
 				log.Printf("Monitor %s is DOWN", monitorID)
+				delete(monitor.monitorLastSeen, monitorID)
 
-				// If the fallen monitor is the leader → start election
-				if monitorID == currentLeader {
+				// si el monitor caido es el lider → inicio eleccion
+				if monitorID == monitor.currentLeader {
 					log.Printf("Leader %s failed → starting election", monitorID)
-					currentLeader = "" // Clear leader
+					monitor.currentLeader = ""
 
-					if !electionInProgress {
-						electionInProgress = true
-						mu.Unlock()
-						startElection(config)
-						if config.MonitorId == currentLeader {
+					if !monitor.electionInProgress {
+						monitor.mu.Unlock()
+						startElection(config, monitor)
+						if config.MonitorId == monitor.currentLeader {
 							log.Printf("[Leader] Restarting monitor %s...", monitorID)
 							go restartWorker(monitorID)
+						} else {
+							log.Printf("Not the leader (%s), can't restart monitor %s", config.MonitorId, monitorID)
 						}
-						mu.Lock()
+						monitor.mu.Lock()
 					}
-				} else if config.MonitorId == currentLeader {
-					// Only the leader can restart fallen monitors
+				} else if config.MonitorId == monitor.currentLeader {
+					// solo el lider puede reiniciar
 					log.Printf("[Leader] Restarting monitor %s...", monitorID)
-					mu.Unlock()
+					monitor.mu.Unlock()
 					go restartWorker(monitorID)
-					mu.Lock()
+					monitor.mu.Lock()
 				}
-
-				delete(monitorLastSeen, monitorID)
 			}
 		}
 
-		// ---- Leader handles worker failures ----
-		if config.MonitorId == currentLeader {
-			for workerID, last := range workerLastSeen {
+		// resolver fallas de workers
+		if config.MonitorId == monitor.currentLeader {
+			for workerID, last := range monitor.workerLastSeen {
 				if time.Since(last) > timeout {
 					log.Printf("[Leader] Worker %s DOWN → restarting...", workerID)
-					mu.Unlock()
+					delete(monitor.workerLastSeen, workerID)
+					monitor.mu.Unlock()
 					go restartWorker(workerID)
-					mu.Lock()
-					delete(workerLastSeen, workerID)
+					monitor.mu.Lock()
 				}
 			}
 		}
 
-		mu.Unlock()
-	}
-}
-
-// ---------------- Monitor Heartbeats ---------------- //
-func sendMonitorHeartbeat(config Config) {
-	t := time.NewTicker(250 * time.Millisecond)
-	addresses, _ := communication.ResolveAddresses(config.MonitorId, config.PeersCount)
-
-	for range t.C {
-		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", MSG_MONITOR, config.MonitorId))
+		monitor.mu.Unlock()
 	}
 }
 
 // ---------------- Message Handler ---------------- //
-func listenUDP(conn *net.UDPConn, config Config) {
+func listenUDP(conn *net.UDPConn, config Config, monitor *Monitor) {
 	buf := make([]byte, 1024)
 
 	for {
@@ -160,12 +155,12 @@ func listenUDP(conn *net.UDPConn, config Config) {
 		}
 
 		msg := string(buf[:n])
-		handleMessage(msg, config)
+		handleMessage(msg, config, monitor)
 	}
 }
 
-func handleMessage(msg string, config Config) {
-	parts := split(msg, ":")
+func handleMessage(msg string, config Config, monitor *Monitor) {
+	parts := strings.Split(msg, ":")
 	if len(parts) < 2 {
 		return
 	}
@@ -173,118 +168,110 @@ func handleMessage(msg string, config Config) {
 	msgType := parts[0]
 	idStr := parts[1]
 
-	mu.Lock()
-	defer mu.Unlock()
-
 	switch msgType {
 
-	// ------------- MONITOR HEARTBEAT -------------
 	case MSG_MONITOR:
-		monitorLastSeen[idStr] = time.Now()
+		monitor.mu.Lock()
+		defer monitor.mu.Unlock()
+		monitor.monitorLastSeen[idStr] = time.Now()
 
-	// ------------- WORKER HEARTBEAT --------------
 	case MSG_WORKER:
-		workerLastSeen[idStr] = time.Now()
+		monitor.mu.Lock()
+		defer monitor.mu.Unlock()
+		monitor.workerLastSeen[idStr] = time.Now()
 
-	// ------------- BULLY ELECTION ----------------
 	case MSG_ELECTION:
 		log.Printf("Received ELECTION from %s", idStr)
 		senderID, _ := strconv.Atoi(strings.Split(idStr, "-")[1])
 
 		if senderID < config.MonitorIdInt {
 			log.Printf("Sending OK to %s (I have higher ID)", idStr)
-			addresses, _ := communication.ResolveAddresses(config.MonitorId, config.PeersCount, senderID)
+			addresses, _ := communication.ResolveAddresses(config.MonitorId, config.monitorsCount, senderID)
 			communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", MSG_OK, config.MonitorId))
 
-			go startElection(config)
-
-			// DON'T start election here - prevents election storm
-			// Just send OK and let the Bully algorithm work
+			go startElection(config, monitor)
 		}
 
 	case MSG_OK:
-		// Non-blocking send to channel
 		select {
-		case okElectionMessageChan <- true:
+		case monitor.okElectionMessageChan <- true:
 		default:
-			// Channel full, that's okay
 		}
 
 	case MSG_COORDINATOR:
 		senderID, _ := strconv.Atoi(strings.Split(idStr, "-")[1])
 
+		monitor.mu.Lock()
+		defer monitor.mu.Unlock()
 		if senderID >= config.MonitorIdInt {
-			oldLeader := currentLeader
-			currentLeader = idStr
-			electionInProgress = false
+			oldLeader := monitor.currentLeader
+			monitor.currentLeader = idStr
+			monitor.electionInProgress = false
 
 			if oldLeader != idStr {
-				log.Printf("New leader elected: %s", currentLeader)
+				log.Printf("New leader elected: %s", monitor.currentLeader)
 			}
-
-			// Non-blocking send
-			/*select {
-			case okElectionMessageChan <- true:
-			default:
-			}*/
 		}
 	}
 }
 
-// ---------------- Bully Election ---------------- //
-func startElection(config Config) {
+func startElection(config Config, monitor *Monitor) {
+	monitor.mu.Lock()
+	monitor.electionInProgress = true
+	monitor.mu.Unlock()
 	log.Printf(">>> Starting ELECTION (my ID: %d)", config.MonitorIdInt)
 
-	// Find nodes with higher IDs
+	// buscar nodos con IDs mas altos
 	higher := []int{}
-	for id := config.MonitorIdInt + 1; id <= config.PeersCount; id++ {
+	for id := config.MonitorIdInt + 1; id <= config.monitorsCount; id++ {
 		higher = append(higher, id)
 	}
 
-	// If no higher nodes exist → I'm the leader
+	// si no hay → soy el lider
 	if len(higher) == 0 {
 		log.Printf("No higher nodes exist, declaring myself leader")
 
-		mu.Lock()
-		currentLeader = config.MonitorId
-		electionInProgress = false
-		mu.Unlock()
+		monitor.mu.Lock()
+		monitor.currentLeader = config.MonitorId
+		monitor.electionInProgress = false
+		monitor.mu.Unlock()
 
-		addresses, _ := communication.ResolveAddresses(config.MonitorId, config.PeersCount)
+		addresses, _ := communication.ResolveAddresses(config.MonitorId, config.monitorsCount)
 		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", MSG_COORDINATOR, config.MonitorId))
 		log.Printf("★ I am the leader: %s", config.MonitorId)
 		return
 	}
 
-	// Notify higher nodes
-	addresses, _ := communication.ResolveAddresses(config.MonitorId, config.PeersCount, higher...)
+	// enviar eleccion a los nodos mas altos
+	addresses, _ := communication.ResolveAddresses(config.MonitorId, config.monitorsCount, higher...)
 	log.Printf("Sending ELECTION to higher nodes: %v, addresses: %v", higher, addresses)
 	communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", MSG_ELECTION, config.MonitorId))
 
-	// Wait for OK or timeout
-	timeout := 1 * time.Second
+	timeout := 3 * time.Second
 
 	select {
-	case <-okElectionMessageChan:
-		log.Println("Received OK from higher node, waiting for COORDINATOR")
-		// Higher node will handle it, we just wait
+	case <-monitor.okElectionMessageChan:
+		log.Println("Received OK from higher node, dropping off of election")
+		monitor.mu.Lock()
+		monitor.currentLeader = config.MonitorId
+		monitor.electionInProgress = false
+		monitor.mu.Unlock()
 		return
 
 	case <-time.After(timeout):
 		log.Println("No response from higher nodes, declaring myself leader")
 
-		mu.Lock()
-		currentLeader = config.MonitorId
-		electionInProgress = false
-		mu.Unlock()
+		monitor.mu.Lock()
+		monitor.currentLeader = config.MonitorId
+		monitor.electionInProgress = false
+		monitor.mu.Unlock()
 
-		addresses, _ := communication.ResolveAddresses(config.MonitorId, config.PeersCount)
+		addresses, _ := communication.ResolveAddresses(config.MonitorId, config.monitorsCount)
 		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", MSG_COORDINATOR, config.MonitorId))
 		log.Printf("★ I am the leader: %s", config.MonitorId)
 	}
 }
 
-// ---------------- Restart Worker ---------------- //
 func restartWorker(containerID string) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -293,26 +280,11 @@ func restartWorker(containerID string) {
 	}
 	defer cli.Close()
 
-	err = cli.ContainerRestart(context.Background(), containerID, container.StopOptions{})
+	err = cli.ContainerStart(context.Background(), containerID, container.StartOptions{})
 	if err != nil {
 		log.Printf("Restart error for %s: %v", containerID, err)
 		return
 	}
 
 	log.Printf("✓ Restarted: %s", containerID)
-}
-
-// ---------------- String Split ---------------- //
-func split(s, sep string) []string {
-	var out []string
-	curr := ""
-	for _, ch := range s {
-		if string(ch) == sep {
-			out = append(out, curr)
-			curr = ""
-		} else {
-			curr += string(ch)
-		}
-	}
-	return append(out, curr)
 }
