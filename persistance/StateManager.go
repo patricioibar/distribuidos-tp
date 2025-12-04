@@ -54,8 +54,8 @@ func NewStateManager(state State, stateLog StateLog, snapshotPeriod int) (*State
 	sm := &StateManager{
 		state:             state,
 		stateLog:          stateLog,
-		logsSinceSnapshot: 0,
 		snapshotPeriod:    snapshotPeriod,
+		logsSinceSnapshot: 0,
 	}
 
 	snapshotData, err := sm.state.Serialize()
@@ -74,8 +74,8 @@ func LoadStateManager(state State, stateLog StateLog, snapshotPeriod int) (*Stat
 	sm := &StateManager{
 		state:             state,
 		stateLog:          stateLog,
-		logsSinceSnapshot: 0,
 		snapshotPeriod:    snapshotPeriod,
+		logsSinceSnapshot: 0,
 	}
 	if err := sm.Restore(); err != nil {
 		return nil, err
@@ -93,11 +93,11 @@ func (sm *StateManager) Log(op Operation) error {
 	if err != nil {
 		return err
 	}
-	err = sm.stateLog.Commit()
+	err = op.ApplyTo(sm.state)
 	if err != nil {
 		return err
 	}
-	err = op.ApplyTo(sm.state)
+	err = sm.stateLog.Commit()
 	if err != nil {
 		return err
 	}

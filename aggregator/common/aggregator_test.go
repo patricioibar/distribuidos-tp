@@ -3,8 +3,10 @@ package common_test
 import (
 	"aggregator/common"
 	agf "aggregator/common/aggFunctions"
+	pers "aggregator/common/persistence"
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/patricioibar/distribuidos-tp/bitmap"
@@ -61,6 +63,10 @@ func newStubConsumer() *StubConsumer {
 
 func (s *StubConsumer) waitForStart() {
 	<-s.started
+}
+
+func (s *StubConsumer) waitForDelete() {
+	<-s.deletedChan
 }
 
 func (s *StubConsumer) StartConsuming(onMessageCallback mw.OnMessageCallback) (error *mw.MessageMiddlewareError) {
@@ -124,7 +130,14 @@ func (s *StubConsumer) Delete() (error *mw.MessageMiddlewareError) {
 
 var endSignal, _ = ic.NewEndSignal(nil, 0).Marshal()
 
+func removePersistenceFolder(folderName string) {
+	stateDir := pers.StateRoot + "/" + folderName
+	os.RemoveAll(stateDir)
+}
+
 func TestSumAggregatorWorker(t *testing.T) {
+	testid := "test-sum-agg"
+	removePersistenceFolder(testid)
 	config := &common.Config{
 		WorkerId:     "worker-1",
 		GroupBy:      []string{"category"},
@@ -132,7 +145,7 @@ func TestSumAggregatorWorker(t *testing.T) {
 		BatchSize:    10,
 		WorkersCount: 1,
 	}
-	input, output := newWorker(config)
+	input, output := newWorker(config, testid)
 
 	msg, _ := ic.NewRowsBatch(
 		[]string{"category", "value"},
@@ -198,6 +211,8 @@ func TestSumAggregatorWorker(t *testing.T) {
 }
 
 func TestCountAggregatorWorker(t *testing.T) {
+	testid := "test-count-agg"
+	removePersistenceFolder(testid)
 	config := &common.Config{
 		WorkerId:     "worker-1",
 		GroupBy:      []string{"category"},
@@ -205,7 +220,7 @@ func TestCountAggregatorWorker(t *testing.T) {
 		BatchSize:    10,
 		WorkersCount: 1,
 	}
-	input, output := newWorker(config)
+	input, output := newWorker(config, testid)
 	msg, _ := ic.NewRowsBatch(
 		[]string{"category", "value"},
 		[][]interface{}{
@@ -267,16 +282,16 @@ func TestCountAggregatorWorker(t *testing.T) {
 	}
 }
 
-func newWorker(config *common.Config) (*StubConsumer, *StubProducer) {
+func newWorker(config *common.Config, testid string) (*StubConsumer, *StubProducer) {
 	input := newStubConsumer()
 	output := newStubProducer()
-	worker := common.NewAggregatorWorker(config, input, output, "", make(chan string, 1), 0)
+	worker := common.NewAggregatorWorker(config, input, output, testid, make(chan string, 1), 0)
 	go worker.Start()
 	input.waitForStart()
 	return input, output
 }
 
-func newWorkers(config *common.Config, workersCount int) (*StubConsumer, *StubProducer) {
+func newWorkers(config *common.Config, workersCount int, testid string) (*StubConsumer, *StubProducer) {
 	input := newStubConsumer()
 	output := newStubProducer()
 	config.WorkersCount = workersCount
@@ -289,7 +304,7 @@ func newWorkers(config *common.Config, workersCount int) (*StubConsumer, *StubPr
 			WorkerId:     fmt.Sprintf("worker-%d", i+1),
 			LogLevel:     "DEBUG",
 		}
-		worker := common.NewAggregatorWorker(&configCopy, input, output, "", make(chan string, 1), 0)
+		worker := common.NewAggregatorWorker(&configCopy, input, output, testid, make(chan string, 1), 0)
 		go worker.Start()
 		input.waitForStart()
 	}
@@ -297,6 +312,8 @@ func newWorkers(config *common.Config, workersCount int) (*StubConsumer, *StubPr
 }
 
 func TestSumDuplicatedMessageAggregatorWorker(t *testing.T) {
+	testid := "test-sum-dup-agg"
+	removePersistenceFolder(testid)
 	config := &common.Config{
 		WorkerId:     "worker-1",
 		GroupBy:      []string{"category"},
@@ -304,7 +321,7 @@ func TestSumDuplicatedMessageAggregatorWorker(t *testing.T) {
 		BatchSize:    10,
 		WorkersCount: 1,
 	}
-	input, output := newWorker(config)
+	input, output := newWorker(config, testid)
 
 	msg, _ := ic.NewRowsBatch(
 		[]string{"category", "value"},
@@ -361,6 +378,8 @@ func TestSumDuplicatedMessageAggregatorWorker(t *testing.T) {
 }
 
 func TestTwoAggregatorWorkers(t *testing.T) {
+	testid := "test-two-workers"
+	removePersistenceFolder(testid)
 	config1 := &common.Config{
 		GroupBy: []string{"category"},
 		Aggregations: []agf.AggConfig{
@@ -368,7 +387,7 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 			{Col: "value", Func: "sum"}},
 		BatchSize: 10,
 	}
-	inputs, output := newWorkers(config1, 2)
+	inputs, output := newWorkers(config1, 2, testid)
 	msg, _ := ic.NewRowsBatch(
 		[]string{"category", "value"},
 		[][]interface{}{
@@ -380,8 +399,7 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 	).Marshal()
 	inputs.SimulateMessage(msg)
 	inputs.SimulateMessage(endSignal)
-	output.waitForAMessage()
-	output.waitForAMessage()
+	inputs.waitForDelete()
 
 	if len(output.sentMessages) != 3 {
 		t.Errorf("Expected 3 message sent, got %d:", len(output.sentMessages))
@@ -412,6 +430,19 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 		case *ic.AggregatedDataPayload:
 			if len(p.Rows) != len(expectedRows) {
 				t.Errorf("Expected %d rows, got %d", len(expectedRows), len(p.Rows))
+			}
+			var sum_idx int = -1
+			var count_idx int = -1
+			for i, col := range p.ColumnNames {
+				if col == "sum_value" {
+					sum_idx = i
+				}
+				if col == "count_category" {
+					count_idx = i
+				}
+			}
+			if sum_idx == -1 || count_idx == -1 {
+				t.Errorf("Expected columns 'value_sum' and 'category_count' in output, got %v", p.ColumnNames)
 			}
 			for _, row := range p.Rows {
 				category := row[0].(string)
@@ -444,6 +475,8 @@ func TestTwoAggregatorWorkers(t *testing.T) {
 	}
 }
 func TestTwoAggregatorsDuplicateEndSignal(t *testing.T) {
+	testid := "test-dupEOF"
+	removePersistenceFolder(testid)
 	numOfWorkers := 2
 	config := &common.Config{
 		GroupBy:      []string{"category"},
@@ -464,7 +497,7 @@ func TestTwoAggregatorsDuplicateEndSignal(t *testing.T) {
 			LogLevel:     "DEBUG",
 		}
 		waitToEnd[i] = make(chan struct{}, 1)
-		worker := common.NewAggregatorWorker(&configCopy, input, output, "", make(chan string, 1), 0)
+		worker := common.NewAggregatorWorker(&configCopy, input, output, testid, make(chan string, 1), 0)
 		go func(i int) {
 			worker.Start()
 			fmt.Printf("worker %d ended", i+1)
