@@ -29,6 +29,7 @@ type AggregatorWorker struct {
 	// Closing synchronization
 	removeFromMap chan string
 	closeOnce     sync.Once
+	closeChan     chan struct{}
 }
 
 func NewAggregatorWorker(
@@ -53,6 +54,7 @@ func NewAggregatorWorker(
 		jobID:         jobID,
 		closeOnce:     sync.Once{},
 		state:         sm,
+		closeChan:     make(chan struct{}),
 	}
 
 	if config.IsReducer {
@@ -69,7 +71,7 @@ func (aw *AggregatorWorker) Start() {
 	if err := aw.input.StartConsuming(aw.callback); err != nil {
 		log.Fatalf("Failed to start consuming messages: %v", err)
 	}
-
+	<-aw.closeChan
 	aw.Close()
 }
 

@@ -67,6 +67,7 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, se
 		// This worker has already sent its end signal (duplicated message, ignore)
 		return false
 	}
+	shouldDeleteInput := aw.PropagateEndSignal(p)
 	sendDataOnce.Do(func() {
 		retainedData := aw.dataRetainer.RetainData(
 			aw.Config.GroupBy,
@@ -74,10 +75,46 @@ func (aw *AggregatorWorker) aggregatorPassToNextStage(p *ic.EndSignalPayload, se
 			aw.aggregatedData(),
 		)
 		aw.sendRetainedData(retainedData)
+
+		consumer, producer, shouldReturn := createRecoveryProducerAndConsumer(aw)
+		if shouldReturn {
+			return
+		}
+
 		aw.sendProcessedBatches()
+		aw.waitForRecoveryRequests(producer, consumer)
+		close(aw.closeChan)
 	})
-	aw.PropagateEndSignal(p)
+	if shouldDeleteInput {
+		log.Debugf("[%s] All workers done. Deleting input queue.", aw.jobID)
+		aw.input.Delete()
+	} else {
+		log.Debugf("[%s] Done.", aw.jobID)
+	}
 	return true
+}
+
+func createRecoveryProducerAndConsumer(aw *AggregatorWorker) (*mw.Consumer, *mw.Producer, bool) {
+	consumer, err := mw.NewConsumer(
+		aw.Config.WorkerId,
+		rollback.RecoveryRequestsSourceName(aw.Config.WorkerId),
+		aw.Config.MiddlewareAddress,
+		aw.jobID,
+	)
+	if err != nil {
+		log.Errorf("Failed to create recovery responses consumer for job %s: %v", aw.jobID, err)
+		return nil, nil, true
+	}
+	producer := rollback.GetRecoveryResponseProducer(
+		aw.Config.WorkerId,
+		aw.Config.MiddlewareAddress,
+		aw.jobID,
+	)
+	if producer == nil {
+		log.Errorf("Failed to create recovery responses producer for job %s", aw.jobID)
+		return nil, nil, true
+	}
+	return consumer, producer, false
 }
 
 func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload) {
@@ -104,37 +141,22 @@ func (aw *AggregatorWorker) aggregateNewRowsBatch(p *ic.RowsBatchPayload) {
 	}
 }
 
-func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) {
+func (aw *AggregatorWorker) PropagateEndSignal(payload *ic.EndSignalPayload) bool {
 	log.Debugf("Worker %s done, propagating end signal", aw.Config.WorkerId)
 
 	payload.AddWorkerDone(aw.Config.WorkerId)
 
 	if len(payload.WorkersDone) == aw.Config.WorkersCount {
-		log.Debugf("All workers done. Deleting input queue.")
-		// endSignal, _ := ic.NewEndSignal(nil, payload.SeqNum).Marshal()
-		// aw.output.Send(endSignal)
-		aw.waitForRecoveryRequests()
-		aw.input.Delete()
-		return
+		return true
 	}
 
 	msg := ic.NewEndSignal(payload.WorkersDone, payload.SeqNum)
 	endSignal, _ := msg.Marshal()
 	aw.input.Send(endSignal) // re-enqueue the end signal with updated workers done
+	return false
 }
 
-func (aw *AggregatorWorker) waitForRecoveryRequests() {
-	consumer, err := mw.NewConsumer(
-		aw.Config.WorkerId,
-		rollback.RecoveryResponsesSourceName(aw.Config.WorkerId),
-		aw.Config.MiddlewareAddress,
-		aw.jobID,
-	)
-	if err != nil {
-		log.Errorf("Failed to create recovery responses consumer for job %s: %v", aw.jobID, err)
-		return
-	}
-
+func (aw *AggregatorWorker) waitForRecoveryRequests(responsesProducer *mw.Producer, requestConsumer *mw.Consumer) {
 	callback := func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		defer func() { done <- nil }()
 		// log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
@@ -152,18 +174,21 @@ func (aw *AggregatorWorker) waitForRecoveryRequests() {
 				log.Errorf("Invalid payload for rollback request")
 				return
 			}
+			log.Debugf("[%s] Received recovery request for %d batches.", aw.jobID, len(p.SequenceNumbers))
 
+			var opCasted *pers.AggregateBatchOp
 			for _, seqNum := range p.SequenceNumbers {
+
 				op, err := aw.state.GetOperationWithSeqNumber(seqNum)
 				if err != nil {
 					log.Errorf("Failed to get operation for seq %d: %v", seqNum, err)
-					continue
-				}
-
-				opCasted, ok := op.(*pers.AggregateBatchOp)
-				if !ok {
-					log.Errorf("Operation for seq %d is not an AggregateBatchOp", seqNum)
-					continue
+					opCasted = pers.NewAggregateBatchOp(seqNum, map[string][]interface{}{})
+				} else {
+					opCasted, ok = op.(*pers.AggregateBatchOp)
+					if !ok {
+						log.Debugf("[%s] Operation for seq %d is not an AggregateBatchOp, sending empty AggregateBatchOp instead", aw.jobID, seqNum)
+						opCasted = pers.NewAggregateBatchOp(seqNum, map[string][]interface{}{})
+					}
 				}
 
 				rollback.SendOperationLogResponse(
@@ -171,12 +196,13 @@ func (aw *AggregatorWorker) waitForRecoveryRequests() {
 					aw.Config.MiddlewareAddress,
 					aw.jobID,
 					opCasted,
+					responsesProducer,
 				)
 			}
+			log.Debugf("[%s] All recovery batches sent.", aw.jobID)
 
 		case rollback.TypeAllOK:
-			log.Debugf("Received All OK for recovery requests.")
-			consumer.Delete()
+			requestConsumer.Delete()
 
 		default:
 			log.Errorf("Unexpected message type: %s", receivedMessage.Type)
@@ -184,6 +210,9 @@ func (aw *AggregatorWorker) waitForRecoveryRequests() {
 	}
 
 	// blocks until queue is deleted
-	consumer.StartConsuming(callback)
-	consumer.Close()
+	log.Debugf("Worker %s waiting for recovery requests for job %s...", aw.Config.WorkerId, aw.jobID)
+	requestConsumer.StartConsuming(callback)
+	log.Debugf("[%s] Received All OK for recovery requests.", aw.jobID)
+	requestConsumer.Close()
+	responsesProducer.Close()
 }

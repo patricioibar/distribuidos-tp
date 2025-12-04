@@ -12,8 +12,9 @@ type Consumer struct {
 	channel    *amqp.Channel
 	deliveries <-chan amqp.Delivery
 
-	quit chan struct{} // para señalar al goroutine que pare
-	done chan struct{} // para esperar a que termine el goroutine
+	quit    chan struct{} // para señalar al goroutine que pare
+	deleted chan struct{} // para señalar que se eliminó la cola
+	done    chan struct{} // para esperar a que termine el goroutine
 
 	startOnce sync.Once
 	closeOnce sync.Once
@@ -75,6 +76,7 @@ func NewConsumer(consumerName string, sourceName string, connectionAddr string, 
 		sourceName: sourceName,
 		channel:    ch,
 		quit:       make(chan struct{}),
+		deleted:    make(chan struct{}),
 		done:       make(chan struct{}),
 	}, nil
 }
@@ -118,6 +120,7 @@ func ResumeConsumer(consumerName string, sourceName string, connectionAddr strin
 		sourceName: sourceName,
 		channel:    ch,
 		quit:       make(chan struct{}),
+		deleted:    make(chan struct{}),
 		done:       make(chan struct{}),
 	}, nil
 }
@@ -151,6 +154,9 @@ func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageM
 	defer close(c.done)
 	for {
 		select {
+		case <-c.quit:
+			// señal de cierre desde StopConsuming
+			return nil
 		case d, ok := <-c.deliveries:
 			if !ok {
 				// canal cerrado por el server o por Cancel
@@ -159,15 +165,17 @@ func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageM
 
 			ret := make(chan *MessageMiddlewareError, 1)
 			onMessageCallback(MiddlewareMessage{Body: d.Body, Headers: d.Headers}, ret)
-			err := <-ret
-			if err != nil {
-				_ = d.Nack(false, true) // requeue
-			} else {
-				_ = d.Ack(false)
+
+			select {
+			case <-c.deleted:
+				return nil
+			case err := <-ret:
+				if err != nil {
+					_ = d.Nack(false, true) // requeue
+				} else {
+					_ = d.Ack(false)
+				}
 			}
-		case <-c.quit:
-			// señal de cierre desde StopConsuming
-			return nil
 		}
 	}
 }
@@ -175,7 +183,9 @@ func (c *Consumer) StartConsuming(onMessageCallback OnMessageCallback) *MessageM
 func (c *Consumer) StopConsuming() *MessageMiddlewareError {
 
 	c.closeOnce.Do(func() {
-		close(c.quit) // señal al goroutine que pare
+		if c.quit != nil {
+			close(c.quit) // señal al goroutine que pare
+		}
 
 		// If StartConsuming was never called, the goroutine that closes c.done
 		// was never started and <-c.done would block forever. In that case we
@@ -222,11 +232,11 @@ func (c *Consumer) Delete() (error *MessageMiddlewareError) {
 	var firstErr *MessageMiddlewareError
 
 	if c.channel != nil {
+		close(c.deleted)
 		_, err := c.channel.QueueDelete(c.name, false, false, false)
 		if err != nil {
 			firstErr = &MessageMiddlewareError{Code: MessageMiddlewareDeleteError, Msg: "Failed to delete queue: " + err.Error()}
 		}
-
 		if err := c.channel.Close(); err != nil {
 			if firstErr == nil {
 				firstErr = &MessageMiddlewareError{Code: MessageMiddlewareCloseError, Msg: "Failed to close channel: " + err.Error()}

@@ -31,13 +31,12 @@ func RecoveryResponsesSourceName(reducerID string) string {
 }
 
 func RecoveryRequestsSourceName(aggregatorID string) string {
-	prefix := getWorkerPrefix(aggregatorID)
-	return prefix + aggregatorID + "-recovery-requests"
+	return aggregatorID + "-recovery-requests"
 }
 
-func SendAllOkToEveryAggregator(reducerID string, addr string, jobID string, aggregatorsDone []string) {
+func SendAllOkToEveryAggregator(addr string, jobID string, aggregatorsDone []string) {
 	for _, aggregatorID := range aggregatorsDone {
-		SendAllOkToWorker(aggregatorID, addr, jobID, reducerID)
+		SendAllOkToWorker(aggregatorID, addr, jobID)
 	}
 }
 
@@ -53,13 +52,13 @@ func AskForLogsFromDuplicatedBatches(aggregatorID string, addr string, jobID str
 	}
 }
 
-func SendAllOkToWorker(aggregatorID string, addr string, jobID string, workerID string) {
+func SendAllOkToWorker(aggregatorID string, addr string, jobID string) {
 	producer := getRecoveryRequestProducer(aggregatorID, addr, jobID)
 	if producer == nil {
 		return
 	}
 	defer producer.Close()
-	msg, _ := NewRecoveryAllOK(workerID).Marshal()
+	msg, _ := NewRecoveryAllOK(aggregatorID).Marshal()
 	if err := producer.Send(msg); err != nil {
 		log.Errorf("Failed to publish recovery request message: %v", err)
 	}
@@ -72,13 +71,13 @@ func getRecoveryRequestProducer(aggregatorID string, addr string, jobID string) 
 		jobID,
 	)
 	if err != nil {
-		log.Errorf("Failed to create recovery requests producer: %v", err)
+		log.Errorf("Failed to create recovery requests producer for job %s: %v", jobID, err)
 		return nil
 	}
 	return producer
 }
 
-func getRecoveryResponseProducer(aggregatorID string, addr string, jobID string) *mw.Producer {
+func GetRecoveryResponseProducer(aggregatorID string, addr string, jobID string) *mw.Producer {
 	producer, err := mw.NewProducer(
 		RecoveryResponsesSourceName(aggregatorID),
 		addr,
@@ -91,12 +90,7 @@ func getRecoveryResponseProducer(aggregatorID string, addr string, jobID string)
 	return producer
 }
 
-func SendOperationLogResponse(aggregatorID string, addr string, jobID string, op *persistence.AggregateBatchOp) {
-	producer := getRecoveryResponseProducer(aggregatorID, addr, jobID)
-	if producer == nil {
-		return
-	}
-	defer producer.Close()
+func SendOperationLogResponse(aggregatorID string, addr string, jobID string, op *persistence.AggregateBatchOp, producer *mw.Producer) {
 	msg, _ := NewRecoveryResponse(aggregatorID, op.SeqNumber(), op.Data).Marshal()
 	if err := producer.Send(msg); err != nil {
 		log.Errorf("Failed to publish recovery request message: %v", err)

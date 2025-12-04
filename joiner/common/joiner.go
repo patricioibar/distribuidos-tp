@@ -415,7 +415,7 @@ func (jw *JoinerWorker) sendJoinedBatch(joinedBatch [][]interface{}, seqNum uint
 		log.Errorf("Failed to marshal joined batch: %v", err)
 		return
 	}
-	log.Debugf("Sending joined batch, rows: %d, bytes: %d", len(joinedBatch), len(batchBytes))
+
 	if err := jw.output.Send(batchBytes); err != nil {
 		log.Errorf("Failed to send joined batch: %v", err)
 	}

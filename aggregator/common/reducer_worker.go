@@ -4,6 +4,7 @@ import (
 	pers "aggregator/common/persistence"
 	"aggregator/common/rollback"
 	"slices"
+	"time"
 
 	"github.com/patricioibar/distribuidos-tp/bitmap"
 	ic "github.com/patricioibar/distribuidos-tp/innercommunication"
@@ -34,9 +35,6 @@ func (aw *AggregatorWorker) reducerMessageCallback() mw.OnMessageCallback {
 		switch p := receivedMessage.Payload.(type) {
 		case *ic.AggregatedDataPayload:
 			aw.reduceAggregatedData(p)
-			if p.SeqNum%50 == 0 {
-				log.Debugf("Reducer %s processed aggregated data batch with seq %d", aw.Config.WorkerId, p.SeqNum)
-			}
 			done <- nil
 
 		case *ic.SequenceSetPayload:
@@ -80,6 +78,7 @@ func (aw *AggregatorWorker) reducerPassToNextStage() {
 	}
 	log.Debug("Deleting input")
 	aw.input.Delete()
+	close(aw.closeChan)
 }
 
 func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceSetPayload) {
@@ -94,8 +93,8 @@ func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceS
 	intersection := bitmap.And(aw.processedBatches(), p.Sequences.Bitmap)
 	if intersection.GetCardinality() != 0 {
 		log.Warningf(
-			"%s received duplicated data for job %s! Received %d duplicated sequence numbers: %s",
-			aw.Config.WorkerId, aw.jobID, intersection.GetCardinality(), intersection.String(),
+			"%s received duplicated data for job %s! Received %d duplicated sequence numbers.",
+			aw.Config.WorkerId, aw.jobID, intersection.GetCardinality(),
 		)
 	}
 	var seq uint64
@@ -117,6 +116,9 @@ func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceS
 
 func (aw *AggregatorWorker) reduceAggregatedData(p *ic.AggregatedDataPayload) {
 	// check for duplicated batch from same worker
+	if slices.Contains(aw.aggregatorsDone(), p.WorkerID) {
+		return
+	}
 	if aw.receivedAggregatorBatchesFor(p.WorkerID).Contains(p.SeqNum) {
 		log.Warningf(
 			"%s received duplicated aggregated data from worker %s for job %s! Sequence number: %d. Ignoring batch.",
@@ -133,7 +135,6 @@ func (aw *AggregatorWorker) rollbackDuplicatedData() {
 	if !aw.areThereDuplicatedBatches() {
 		// no duplicated data to rollback
 		rollback.SendAllOkToEveryAggregator(
-			aw.Config.WorkerId,
 			aw.Config.MiddlewareAddress,
 			aw.jobID,
 			aw.aggregatorsDone(),
@@ -141,35 +142,41 @@ func (aw *AggregatorWorker) rollbackDuplicatedData() {
 		return
 	}
 
-	recoveryQueueDeclared := false
-	var recoveryResponses *mw.Consumer
-	var err error
+	doneRecovering := make(chan struct{})
+	go aw.receiveRecoveryResponses(doneRecovering)
+	aw.sendRecoveryRequests()
+
+	for {
+		select {
+		case <-doneRecovering:
+			log.Infof("[%s] All duplicated batches recovered", aw.jobID)
+			return
+		case <-time.After(2 * time.Second):
+			aw.showRemainingDuplicatedBatches()
+			aw.sendRecoveryRequests()
+		}
+	}
+}
+
+func (aw *AggregatorWorker) sendRecoveryRequests() {
 	for aggregatorID, duplicatedBatches := range aw.state.GetState().(*pers.PersistentState).DuplicatedBatches {
 		if duplicatedBatches.GetCardinality() > 0 {
-			log.Infof("Rolling back %d duplicated batches from aggregator %s for job %s", duplicatedBatches.GetCardinality(), aggregatorID, aw.jobID)
-			if !recoveryQueueDeclared {
-				recoveryResponses, err = mw.NewConsumer(
-					aw.Config.WorkerId,
-					rollback.RecoveryResponsesSourceName(aw.Config.WorkerId),
-					aw.Config.MiddlewareAddress,
-					aw.jobID,
-				)
-				if err != nil {
-					log.Errorf("Failed to create recovery queue consumer for job %s: %v.\nDuplicated batches cannot be rolled back", aw.jobID, err)
-					return
-				}
-				recoveryQueueDeclared = true
-			}
+			log.Debugf("[%s] Rolling back %d duplicated batches from aggregator %s", aw.jobID, duplicatedBatches.GetCardinality(), aggregatorID)
 			rollback.AskForLogsFromDuplicatedBatches(
-				aw.Config.WorkerId,
+				aggregatorID,
 				aw.Config.MiddlewareAddress,
 				aw.jobID,
 				duplicatedBatches,
 			)
+		} else {
+			log.Debugf("[%s] No duplicated batches to rollback from aggregator %s", aw.jobID, aggregatorID)
+			rollback.SendAllOkToWorker(
+				aggregatorID,
+				aw.Config.MiddlewareAddress,
+				aw.jobID,
+			)
 		}
 	}
-	log.Infof("Waiting for recovery responses for job %s", aw.jobID)
-	aw.receiveRecoveryResponses(recoveryResponses)
 }
 
 func (aw *AggregatorWorker) duplicatedBatchesFor(aggregatorID string) *bitmap.Bitmap {
@@ -177,8 +184,37 @@ func (aw *AggregatorWorker) duplicatedBatchesFor(aggregatorID string) *bitmap.Bi
 	return persState.DuplicatedBatchesFor(aggregatorID)
 }
 
-func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consumer) {
-	callback := func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
+func (aw *AggregatorWorker) receiveRecoveryResponses(doneRecovering chan struct{}) {
+	recoveryResponses, err := mw.NewConsumer(
+		aw.Config.WorkerId,
+		rollback.RecoveryResponsesSourceName(aw.Config.WorkerId),
+		aw.Config.MiddlewareAddress,
+		aw.jobID,
+	)
+	if err != nil {
+		log.Errorf("Failed to create recovery queue consumer for job %s: %v.\nDuplicated batches cannot be rolled back", aw.jobID, err)
+		close(doneRecovering)
+		return
+	}
+	log.Debugf("[%s] Waiting for recovery responses for job...", aw.jobID)
+	callback := aw.recoveryResponsesCallback(doneRecovering)
+	go recoveryResponses.StartConsuming(callback)
+	<-doneRecovering
+	recoveryResponses.Delete()
+	recoveryResponses.Close()
+}
+
+func (aw *AggregatorWorker) areThereDuplicatedBatches() bool {
+	for _, duplicatedBatches := range aw.state.GetState().(*pers.PersistentState).DuplicatedBatches {
+		if duplicatedBatches.GetCardinality() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (aw *AggregatorWorker) recoveryResponsesCallback(doneRecovering chan struct{}) mw.OnMessageCallback {
+	return func(consumeChannel mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		defer func() { done <- nil }()
 		// log.Debugf("Worker %s received message: %s", aw.Config.WorkerId, string(consumeChannel.Body))
 		jsonStr := string(consumeChannel.Body)
@@ -192,53 +228,54 @@ func (aw *AggregatorWorker) receiveRecoveryResponses(recoveryResponses *mw.Consu
 		case *rollback.RecoveryResponsePayload:
 			if !aw.duplicatedBatchesFor(p.WorkerID).Contains(p.SequenceNumber) {
 				// duplicated recovery response
+				log.Debugf("[%s] Received duplicated recovery response for batch %d from worker %s", aw.jobID, p.SequenceNumber, p.WorkerID)
 				return
 			}
 
-			operation := pers.NewReceiveAggregatorBatchOp(p.SequenceNumber, p.WorkerID, p.OperationData)
+			log.Debugf("[%s] Reverting duplicated batch %d from worker %s", aw.jobID, p.SequenceNumber, p.WorkerID)
+			operation := pers.NewRevertBatchAggregationOp(p.SequenceNumber, p.WorkerID, p.OperationData)
 			if err := aw.state.Log(operation); err != nil {
 				log.Errorf("Failed to log recovered batch %d from worker %s for job %s: %v", p.SequenceNumber, p.WorkerID, aw.jobID, err)
 			}
 
 			if aw.duplicatedBatchesFor(p.WorkerID).GetCardinality() == 0 {
-				log.Infof("All duplicated batches recovered from worker %s for job %s", p.WorkerID, aw.jobID)
+				log.Infof("[%s] All duplicated batches recovered from worker %s", aw.jobID, p.WorkerID)
 				rollback.SendAllOkToWorker(
-					aw.Config.WorkerId,
+					p.WorkerID,
 					aw.Config.MiddlewareAddress,
 					aw.jobID,
-					p.WorkerID,
 				)
-				return
+				aw.showRemainingDuplicatedBatches()
 			}
 
 			if !aw.areThereDuplicatedBatches() {
-				log.Infof("All recovery responses received for job %s", aw.jobID)
+				log.Infof("[%s] All recovery responses received for job", aw.jobID)
 				// just in case, double check
 				rollback.SendAllOkToEveryAggregator(
-					aw.Config.WorkerId,
 					aw.Config.MiddlewareAddress,
 					aw.jobID,
 					aw.aggregatorsDone(),
 				)
-				recoveryResponses.Delete()
+				close(doneRecovering)
 			}
 
 		default:
 			log.Errorf("Unexpected message type: %s", receivedMessage.Type)
 		}
 	}
-
-	// blocks until queue is deleted
-	recoveryResponses.StartConsuming(callback)
-	recoveryResponses.Close()
 }
 
-func (aw *AggregatorWorker) areThereDuplicatedBatches() bool {
-	for aggregatorID, duplicatedBatches := range aw.state.GetState().(*pers.PersistentState).DuplicatedBatches {
+func (aw *AggregatorWorker) showRemainingDuplicatedBatches() {
+	for _, aggregatorID := range aw.aggregatorsDone() {
+		duplicatedBatches := aw.duplicatedBatchesFor(aggregatorID)
 		if duplicatedBatches.GetCardinality() > 0 {
-			log.Infof("There are %d duplicated batches from aggregator %s for job %s", duplicatedBatches.GetCardinality(), aggregatorID, aw.jobID)
-			return true
+			log.Debugf(
+				"[%s] Still %d duplicated batches remaining from worker %s: %v",
+				aw.jobID,
+				duplicatedBatches.GetCardinality(),
+				aggregatorID,
+				duplicatedBatches.ToArray(),
+			)
 		}
 	}
-	return false
 }
