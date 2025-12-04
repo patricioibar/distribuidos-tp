@@ -21,6 +21,7 @@ import (
 type CoffeeAnalyzer struct {
 	Address        string
 	mwAddr         string
+	config         *Config
 	queriesConfig  []responseparser.QueryOutput
 	parser         []responseparser.ResponseParser
 	jobPublisher   *middleware.Producer
@@ -58,6 +59,7 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 	return &CoffeeAnalyzer{
 		Address:        config.ListeningAddress,
 		mwAddr:         config.MiddlewareAddress,
+		config:         config,
 		queriesConfig:  config.Queries,
 		parser:         []responseparser.ResponseParser{},
 		jobPublisher:   jobPublisher,
@@ -271,7 +273,12 @@ func (ca *CoffeeAnalyzer) jobCleanupService() {
 			log.Infof("Checking job session %v: time since last activity %v, upload finished: %v", id, period, session.IsUploadFinish())
 			if period > GRACE_PERIOD_SECONDS && session.IsUploadFinish() {
 				log.Infof("Cleaning up job session %v due to inactivity", id)
-				ca.cleanupJob(*session, id)
+				middleware.CleanupQueues(
+					id.String(),
+					ca.config.MiddlewareHTTPAddress,
+					ca.config.MiddlewareUsername,
+					ca.config.MiddlewarePassword,
+				)
 			}
 		}
 		ca.jobsStateMutex.Unlock()
@@ -306,11 +313,6 @@ func (ca *CoffeeAnalyzer) logUploadTable(id uuid.UUID, tableName string) error {
 	return err
 }
 
-func (ca *CoffeeAnalyzer) cleanupJob(session jobsessions.JobSession, jobID uuid.UUID) {
-	// TODO
-	// borrarlo del estado y remover todas las colas correspondientes al JOB
-}
-
 func (ca *CoffeeAnalyzer) RestoreAndCleanupInvalidJobs() error {
 	log.Infof("Restoring job sessions state from persistance")
 	ca.jobsStateMutex.Lock()
@@ -323,7 +325,12 @@ func (ca *CoffeeAnalyzer) RestoreAndCleanupInvalidJobs() error {
 	for id, session := range sessions {
 		if !session.IsUploadFinish() {
 			log.Infof("Cleaning up incomplete job session %v during restore", id)
-			ca.cleanupJob(*session, id)
+			middleware.CleanupQueues(
+				id.String(),
+				ca.config.MiddlewareHTTPAddress,
+				ca.config.MiddlewareUsername,
+				ca.config.MiddlewarePassword,
+			)
 		}
 	}
 	return nil
