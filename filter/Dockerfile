@@ -11,6 +11,7 @@ RUN apk add --no-cache git
 # Copy dependency modules (maintaining relative structure)
 COPY innercommunication ./innercommunication
 COPY middleware ./middleware
+COPY communication ./communication
 
 # Copy filter module
 COPY filter ./filter

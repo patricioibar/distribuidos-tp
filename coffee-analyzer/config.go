@@ -19,12 +19,14 @@ type Config struct {
 	Queries           []rp.QueryOutput `json:"queries" mapstructure:"queries"`
 	TotalWorkers      int              `json:"total-workers" mapstructure:"total-workers"`
 	DuplicateProb     float64          `json:"duplicate-prob" mapstructure:"duplicate-prob"`
+	MonitorsCount     string           `json:"monitors-count" mapstructure:"monitors-count"`
 }
 
 var requiredFields = []string{
 	"listening-address",
 	"middleware-address",
 	"total-workers",
+	"monitors-count",
 }
 
 // field: default value

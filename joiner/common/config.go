@@ -23,6 +23,7 @@ type Config struct {
 	BatchSize         int      `json:"output-batch-size" mapstructure:"output-batch-size"`
 	OutputColumns     []string `json:"output-columns" mapstructure:"output-columns"`
 	QueryName         string   `json:"query-name" mapstructure:"query-name"`
+	MonitorsCount     string   `json:"monitors-count" mapstructure:"monitors-count"`
 }
 
 var requiredFields = []string{
@@ -37,6 +38,7 @@ var requiredFields = []string{
 	"log-level",
 	"output-batch-size",
 	"output-columns",
+	"monitors-count",
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.

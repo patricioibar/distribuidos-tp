@@ -4,6 +4,7 @@ import (
 	responseparser "cofee-analyzer/response_parser"
 	"encoding/json"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"communication"
@@ -23,6 +24,7 @@ type CoffeeAnalyzer struct {
 	jobPublisher  *middleware.Producer
 	totalWorkers  int
 	duplicateProb float64
+	monitorsCount string
 }
 
 const jobPublishingExchange = "JOB_SOURCE"
@@ -41,6 +43,7 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 		jobPublisher:  jobPublisher,
 		totalWorkers:  config.TotalWorkers,
 		duplicateProb: config.DuplicateProb,
+		monitorsCount: config.MonitorsCount,
 	}
 }
 
@@ -53,6 +56,9 @@ func (ca *CoffeeAnalyzer) Start() {
 		return
 	}
 	defer listener_socket.Close()
+
+	monitorsCount, _ := strconv.Atoi(ca.monitorsCount)
+	go communication.SendHeartbeatToMonitors("WORKER", "coffee-analyzer", monitorsCount)
 
 	log.Infof("Listening on %s", ca.Address)
 

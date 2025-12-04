@@ -1,9 +1,11 @@
 package main
 
 import (
+	"communication"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -72,6 +74,9 @@ func main() {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
 	callback := initializeAggregatorJob(config, jobsMap, &jobsMapLock, removeFromMap, consumerName)
+
+	monitorsCount, _ := strconv.Atoi(config.MonitorsCount)
+	go communication.SendHeartbeatToMonitors("WORKER", config.WorkerId, monitorsCount)
 
 	go func() {
 		if err := incomingJobs.StartConsuming(callback); err != nil {

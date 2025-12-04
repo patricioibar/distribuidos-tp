@@ -1,9 +1,11 @@
 package main
 
 import (
+	"communication"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -64,6 +66,11 @@ func main() {
 		log.Fatalf("Failed to create incoming jobs consumer: %v", err)
 	}
 	callback := initializeJoinerJob(config, jobsMap, &jobsMapLock, removeFromMap)
+
+	//go SendHeartbeatToMonitors(config)
+	monitorsCountInt, _ := strconv.Atoi(config.MonitorsCount)
+	go communication.SendHeartbeatToMonitors("WORKER", config.WorkerId, monitorsCountInt)
+
 	go func() {
 		if err := incomingJobs.StartConsuming(callback); err != nil {
 			log.Fatalf("Failed to start consuming messages: %v", err)

@@ -27,6 +27,7 @@ type Config struct {
 	IsReducer         bool           `json:"is-reducer" mapstructure:"is-reducer"`
 	Retainings        []dr.Retaining `json:"retainings" mapstructure:"retainings"`
 	DropNa            bool           `json:"drop-na" mapstructure:"drop-na"`
+	MonitorsCount     string         `json:"monitors-count" mapstructure:"monitors-count"`
 }
 
 var requiredFields = []string{
@@ -41,6 +42,7 @@ var requiredFields = []string{
 	"log-level",
 	"output-batch-size",
 	"is-reducer",
+	"monitors-count",
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.

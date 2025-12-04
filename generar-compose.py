@@ -10,10 +10,15 @@ class FilterType(enum.Enum):
     TbyAmount = "TbyAmount"
     TIbyYear = "TIbyYear"
 
-def add_filter_service(nodes: int, filterType: FilterType, input_name: str, output_name: str) -> str:
-    result = ""
-    filterType = filterType.value
-    for i in range(1, nodes + 1):
+def add_filter_service(nodes: int, filterType: FilterType, input_name: str, output_name: str, monitors_count: int) -> str:
+  monitor_deps = "\n".join(
+    [f"      monitor-{n}:\n        condition: service_started"
+     for n in range(1, monitors_count + 1)]
+  )
+
+  result = ""
+  filterType = filterType.value
+  for i in range(1, nodes + 1):
         filter_template = f'''
   filter-{filterType}-{i}:
     image: filter:latest
@@ -30,18 +35,27 @@ def add_filter_service(nodes: int, filterType: FilterType, input_name: str, outp
       SOURCE_QUEUE: "{input_name}"
       OUTPUT_EXCHANGE: "{output_name}"
       MW_ADDRESS: "{MIDDLEWARE_ADDRESS}"
+      MONITORS_COUNT: {monitors_count}
     depends_on:
       rabbitmq:
         condition: service_healthy
+{monitor_deps}
     networks:
       - coffee_analysis_net
 '''
         result += filter_template
-    return result
 
-def add_itemsAggregator_service(nodes: int) -> str:
-    result = ""
-    for i in range(1, nodes + 1):
+    
+  return result
+
+def add_itemsAggregator_service(nodes: int, monitors_count: int) -> str:
+  monitor_deps = "\n".join(
+    [f"      monitor-{n}:\n        condition: service_started"
+     for n in range(1, monitors_count + 1)]
+  )
+
+  result = ""
+  for i in range(1, nodes + 1):
         aggregator_template = r'''
   items-aggregator-''' + str(i) + r''':
     image: aggregator:latest
@@ -61,17 +75,23 @@ def add_itemsAggregator_service(nodes: int) -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
         result += aggregator_template
-    return result
+  return result
 
-def add_itemsReducer_service(nodes: int) -> str:
-    reducer_template = r'''
+def add_itemsReducer_service(nodes: int, monitors_count: int) -> str:
+  monitor_deps = "\n".join(
+    [f"      monitor-{n}:\n        condition: service_started"
+     for n in range(1, monitors_count + 1)]
+  )
+  reducer_template = r'''
   items-reducer:
     image: aggregator:latest
     container_name: items-reducer
@@ -91,15 +111,21 @@ def add_itemsReducer_service(nodes: int) -> str:
       RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 50
       IS_REDUCER: "true"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
-    return reducer_template
+  return reducer_template
 
-def add_itemNames_joiner() -> str:
+def add_itemNames_joiner(monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     joiner_template = r'''
   items-names-joiner:
     image: joiner:latest
@@ -119,15 +145,21 @@ def add_itemNames_joiner() -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
     return joiner_template
 
-def add_tpvAggregator_service(nodes: int) -> str:
+def add_tpvAggregator_service(nodes: int, monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     result = ""
     for i in range(1, nodes + 1):
         aggregator_template = r'''
@@ -149,16 +181,22 @@ def add_tpvAggregator_service(nodes: int) -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
         result += aggregator_template
     return result
 
-def add_tpvReducer_service(nodes: int) -> str:
+def add_tpvReducer_service(nodes: int, monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     reducer_template = r'''
   tpv-reducer:
     image: aggregator:latest
@@ -178,15 +216,21 @@ def add_tpvReducer_service(nodes: int) -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "true"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
     return reducer_template
 
-def add_tpv_joiner(nodes: int) -> str:
+def add_tpv_joiner(nodes: int, monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     result = ""
     for i in range(1, nodes + 1):
         joiner_template = r'''
@@ -208,16 +252,22 @@ def add_tpv_joiner(nodes: int) -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
         result += joiner_template
     return result
 
-def add_topUserAggregator_service(nodes: int) -> str:
+def add_topUserAggregator_service(nodes: int, monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     result = ""
     for i in range(1, nodes + 1):
         aggregator_template = r'''
@@ -239,16 +289,22 @@ def add_topUserAggregator_service(nodes: int) -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
         result += aggregator_template
     return result
 
-def add_topUserReducer_service(nodes: int) -> str:
+def add_topUserReducer_service(nodes: int, monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     reducer_template = r'''
   topuser-reducer:
     image: aggregator:latest
@@ -269,16 +325,22 @@ def add_topUserReducer_service(nodes: int) -> str:
       RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"count_transaction_id\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 3
       IS_REDUCER: "true"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
     return reducer_template
 
 
-def add_topUserBirthdate_joiner(nodes: int) -> str:
+def add_topUserBirthdate_joiner(nodes: int, monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     result = ""
     for i in range(1, nodes + 1):
         joiner_template = r'''
@@ -300,16 +362,22 @@ def add_topUserBirthdate_joiner(nodes: int) -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
         result += joiner_template
     return result
 
-def add_topUserStoreName_joiner() -> str:
+def add_topUserStoreName_joiner(monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     joiner_template = r'''
   topuser-storename-joiner:
     image: joiner:latest
@@ -329,9 +397,11 @@ def add_topUserStoreName_joiner() -> str:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: ''' + str(monitors_count) + r'''
     depends_on:
       rabbitmq:
         condition: service_healthy
+''' + monitor_deps + r'''
     networks:
       - coffee_analysis_net
 '''
@@ -376,7 +446,11 @@ networks:
 '''
     return volumes_and_networks
 
-def add_coffeeAnalyzer_service(total_workers: int) -> str:
+def add_coffeeAnalyzer_service(total_workers: int, monitors_count: int) -> str:
+    monitor_deps = "\n".join(
+        [f"      monitor-{n}:\n        condition: service_started"
+         for n in range(1, monitors_count + 1)]
+    )
     coffee_analyzer_template = f'''
   coffee-analyzer:
     image: coffee-analyzer:latest
@@ -388,9 +462,11 @@ def add_coffeeAnalyzer_service(total_workers: int) -> str:
       - ./coffee-analyzer/config.json:/app/config.json
     environment:
       TOTAL_WORKERS: {total_workers}
+      MONITORS_COUNT: {monitors_count}
     depends_on:
       rabbitmq:
         condition: service_healthy
+{monitor_deps}
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
       interval: 10s
@@ -400,6 +476,36 @@ def add_coffeeAnalyzer_service(total_workers: int) -> str:
       - coffee_analysis_net
 '''
     return coffee_analyzer_template
+
+def add_monitors(num_monitors: int) -> str:
+  result = ""
+  for i in range(1, num_monitors + 1):
+    monitor_template = f'''
+  monitor-{i}:
+    image: monitor:latest
+    container_name: monitor-{i}
+    build:
+      context: .
+      dockerfile: ./monitor/Dockerfile
+    environment:
+      MONITOR_ID: monitor-{i}
+      MONITORS_COUNT: {num_monitors}
+      PORT: 9000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - coffee_analysis_net
+'''
+    result += monitor_template
+  return result
 
 def add_analyst_service(nodes: int) -> str:
     result = ""
@@ -425,10 +531,10 @@ def add_analyst_service(nodes: int) -> str:
     return result
 
 def generate_compose_file(fileName: str, nodes_count: dict):
-    num_filter_years = nodes_count.get("filter-years", 1)
-    num_filter_hours = nodes_count.get("filter-hours", 1)
-    num_filter_amount = nodes_count.get("filter-amount", 1)
-    num_filter_items = nodes_count.get("filter-items", 1)
+    num_filter_years = nodes_count.get("filter-TbyYear", 1)
+    num_filter_hours = nodes_count.get("filter-TbyHour", 1)
+    num_filter_amount = nodes_count.get("filter-TbyAmount", 1)
+    num_filter_items = nodes_count.get("filter-TIbyYear", 1)
     num_items_aggregators = nodes_count.get("items-aggregator", 1)
     num_tpv_aggregators = nodes_count.get("tpv-aggregator", 1)
     num_tpv_joiners = nodes_count.get("tpv-joiner", 1)
@@ -436,6 +542,7 @@ def generate_compose_file(fileName: str, nodes_count: dict):
     num_topuser_birthdate_joiners = nodes_count.get("topuser-birthdate-joiner", 1)
 
     num_analysts = nodes_count.get("analyst", 1)
+    num_monitors = nodes_count.get("monitor", 1)
 
     total_workers = (
         num_filter_years +
@@ -453,22 +560,23 @@ def generate_compose_file(fileName: str, nodes_count: dict):
     compose_content = f'''
 services:
 {add_rabbitmq_service()}
-{add_coffeeAnalyzer_service(total_workers)}
+{add_coffeeAnalyzer_service(total_workers, num_monitors)}
 {add_analyst_service(num_analysts)}
-{add_filter_service(num_filter_years, FilterType.TbyYear, "transactions", "filtered-transactions-year")}
-{add_filter_service(num_filter_hours, FilterType.TbyHour, "filtered-transactions-year", "filtered-transactions-yearhour")}
-{add_filter_service(num_filter_amount, FilterType.TbyAmount, "filtered-transactions-yearhour", "query1_sink")}
-{add_filter_service(num_filter_items, FilterType.TIbyYear, "transaction_items", "filtered-years-items")}
-{add_itemsAggregator_service(num_items_aggregators)}
-{add_itemsReducer_service(num_items_aggregators)}
-{add_itemNames_joiner()}
-{add_tpvAggregator_service(num_tpv_aggregators)}
-{add_tpvReducer_service(num_tpv_aggregators)}
-{add_tpv_joiner(num_tpv_joiners)}
-{add_topUserAggregator_service(num_topuser_aggregators)}
-{add_topUserReducer_service(num_topuser_aggregators)}
-{add_topUserBirthdate_joiner(num_topuser_birthdate_joiners)}
-{add_topUserStoreName_joiner()}
+{add_filter_service(num_filter_years, FilterType.TbyYear, "transactions", "filtered-transactions-year", num_monitors)}
+{add_filter_service(num_filter_hours, FilterType.TbyHour, "filtered-transactions-year", "filtered-transactions-yearhour", num_monitors)}
+{add_filter_service(num_filter_amount, FilterType.TbyAmount, "filtered-transactions-yearhour", "query1_sink", num_monitors)}
+{add_filter_service(num_filter_items, FilterType.TIbyYear, "transaction_items", "filtered-years-items", num_monitors)}
+{add_itemsAggregator_service(num_items_aggregators, num_monitors)}
+{add_itemsReducer_service(num_items_aggregators, num_monitors)}
+{add_itemNames_joiner(num_monitors)}
+{add_tpvAggregator_service(num_tpv_aggregators, num_monitors)}
+{add_tpvReducer_service(num_tpv_aggregators, num_monitors)}
+{add_tpv_joiner(num_tpv_joiners, num_monitors)}
+{add_topUserAggregator_service(num_topuser_aggregators, num_monitors)}
+{add_topUserReducer_service(num_topuser_aggregators, num_monitors)}
+{add_topUserBirthdate_joiner(num_topuser_birthdate_joiners, num_monitors)}
+{add_topUserStoreName_joiner(num_monitors)}
+{add_monitors(num_monitors)}
 {add_volumes_networks()}
 '''
 
@@ -476,20 +584,22 @@ services:
         f.write(compose_content)
 
 nodes_count = {
-    "filter-years": 3,
-    "filter-hours": 3,
-    "filter-amount": 3,
-    "filter-items": 3,
+    "filter-TbyYear": 3,
+    "filter-TbyHour": 3,
+    "filter-TbyAmount": 2,
+    "filter-TIbyYear": 3,
     "items-aggregator": 3,
     "tpv-aggregator": 3,
     "tpv-joiner": 3,
     "topuser-aggregator": 3,
-    "topuser-birthdate-joiner": 3,
-    "analyst": 1
+    "topuser-birthdate-joiner": 5,
+    "analyst": 3,
+    "monitor": 3,
 }
 
 if __name__ == "__main__":
   file_name = "docker-compose.yml"
+  print("Generating docker-compose file...")
   if len(sys.argv) > 1:
     file_name = sys.argv[1]
   

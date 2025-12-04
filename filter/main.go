@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"communication"
+
 	"github.com/google/uuid"
 	"github.com/op/go-logging"
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
@@ -50,6 +52,8 @@ func main() {
 	runningFiltersLock := sync.Mutex{}
 	removeFromMap := make(chan string, 10)
 	handleNewIncommingJob := getHandleIncommingJob(config, runningFilters, &runningFiltersLock, removeFromMap)
+
+	go communication.SendHeartbeatToMonitors("WORKER", config.FilterId, config.MonitorsCount)
 
 	// Recovery goroutine: scan .state for jobs from previous runs and try to resume them
 	go recoverPreviousJobs(config, removeFromMap, &runningFiltersLock, runningFilters)
@@ -135,6 +139,14 @@ func getHandleIncommingJob(config Config, runningFilters map[string]*filter.Filt
 
 }
 
+func SendHeartbeatToMonitors(config Config) {
+	addresses, _ := communication.ResolveAddresses(config.FilterId, config.MonitorsCount)
+	t := time.NewTicker(250 * time.Millisecond)
+	for range t.C {
+		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", "WORKER", config.FilterId))
+	}
+}
+
 func shutdownGracefully(runningFilters map[string]*filter.FilterWorker, input mw.MessageMiddleware) {
 	log.Info("Starting graceful shutdown sequence...")
 
@@ -180,6 +192,7 @@ func getConfig() Config {
 	sourceQueue := os.Getenv("SOURCE_QUEUE")
 	outputExchange := os.Getenv("OUTPUT_EXCHANGE")
 	logLevel := os.Getenv("LOG_LEVEL")
+	monitorsCountStr := os.Getenv("MONITORS_COUNT")
 	if filterType == "" || consumerName == "" || mwAddress == "" || sourceQueue == "" || outputExchange == "" {
 		log.Critical("One or more required environment variables are not set: FILTER_TYPE, CONSUMER_NAME, MW_ADDRESS, SOURCE_QUEUE, OUTPUT_EXCHANGE")
 		os.Exit(1)
@@ -189,6 +202,7 @@ func getConfig() Config {
 		log.Critical("Invalid WORKERS_COUNT value")
 		os.Exit(1)
 	}
+	monitorsCount, _ := strconv.Atoi(monitorsCountStr)
 
 	return Config{
 		FilterId:       filterId,
@@ -199,6 +213,7 @@ func getConfig() Config {
 		SourceQueue:    sourceQueue,
 		OutputExchange: outputExchange,
 		LogLevel:       logLevel,
+		MonitorsCount:  monitorsCount,
 	}
 }
 
@@ -230,6 +245,7 @@ type Config struct {
 	SourceQueue    string
 	OutputExchange string
 	LogLevel       string
+	MonitorsCount  int
 }
 
 func recoverPreviousJobs(config Config, removeFromMap chan string, runningFiltersLock *sync.Mutex, runningFilters map[string]*filter.FilterWorker) bool {

@@ -32,9 +32,16 @@ services:
       - ./coffee-analyzer/config.json:/app/config.json
     environment:
       TOTAL_WORKERS: 28
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     healthcheck:
       test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
       interval: 10s
@@ -108,9 +115,16 @@ services:
       SOURCE_QUEUE: "transactions"
       OUTPUT_EXCHANGE: "filtered-transactions-year"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -129,9 +143,16 @@ services:
       SOURCE_QUEUE: "transactions"
       OUTPUT_EXCHANGE: "filtered-transactions-year"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -150,9 +171,16 @@ services:
       SOURCE_QUEUE: "transactions"
       OUTPUT_EXCHANGE: "filtered-transactions-year"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -172,9 +200,16 @@ services:
       SOURCE_QUEUE: "filtered-transactions-year"
       OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -193,9 +228,16 @@ services:
       SOURCE_QUEUE: "filtered-transactions-year"
       OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -214,9 +256,16 @@ services:
       SOURCE_QUEUE: "filtered-transactions-year"
       OUTPUT_EXCHANGE: "filtered-transactions-yearhour"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -236,9 +285,16 @@ services:
       SOURCE_QUEUE: "filtered-transactions-yearhour"
       OUTPUT_EXCHANGE: "query1_sink"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -257,9 +313,16 @@ services:
       SOURCE_QUEUE: "filtered-transactions-yearhour"
       OUTPUT_EXCHANGE: "query1_sink"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -279,9 +342,16 @@ services:
       SOURCE_QUEUE: "transaction_items"
       OUTPUT_EXCHANGE: "filtered-years-items"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -300,9 +370,16 @@ services:
       SOURCE_QUEUE: "transaction_items"
       OUTPUT_EXCHANGE: "filtered-years-items"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -321,9 +398,16 @@ services:
       SOURCE_QUEUE: "transaction_items"
       OUTPUT_EXCHANGE: "filtered-years-items"
       MW_ADDRESS: "amqp://guest:guest@rabbitmq:5672/"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -346,9 +430,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -370,9 +461,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -394,9 +492,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -420,9 +525,16 @@ services:
       RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 50
       IS_REDUCER: "true"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -445,9 +557,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -470,9 +589,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -494,9 +620,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -518,9 +651,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -543,9 +683,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "true"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -568,9 +715,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -592,9 +746,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -616,9 +777,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -641,9 +809,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -665,9 +840,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -689,9 +871,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       IS_REDUCER: "false"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -715,9 +904,16 @@ services:
       RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"count_transaction_id\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 3
       IS_REDUCER: "true"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -740,9 +936,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -764,9 +967,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -788,9 +998,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -812,9 +1029,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -836,9 +1060,16 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
     networks:
       - coffee_analysis_net
 
@@ -861,9 +1092,86 @@ services:
       LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 200
       OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
+      MONITORS_COUNT: 3
     depends_on:
       rabbitmq:
         condition: service_healthy
+      monitor-1:
+        condition: service_started
+      monitor-2:
+        condition: service_started
+      monitor-3:
+        condition: service_started
+    networks:
+      - coffee_analysis_net
+
+
+  monitor-1:
+    image: monitor:latest
+    container_name: monitor-1
+    build:
+      context: .
+      dockerfile: ./monitor/Dockerfile
+    environment:
+      MONITOR_ID: monitor-1
+      MONITORS_COUNT: 3
+      PORT: 9000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - coffee_analysis_net
+
+  monitor-2:
+    image: monitor:latest
+    container_name: monitor-2
+    build:
+      context: .
+      dockerfile: ./monitor/Dockerfile
+    environment:
+      MONITOR_ID: monitor-2
+      MONITORS_COUNT: 3
+      PORT: 9000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - coffee_analysis_net
+
+  monitor-3:
+    image: monitor:latest
+    container_name: monitor-3
+    build:
+      context: .
+      dockerfile: ./monitor/Dockerfile
+    environment:
+      MONITOR_ID: monitor-3
+      MONITORS_COUNT: 3
+      PORT: 9000
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "30001"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - coffee_analysis_net
 
