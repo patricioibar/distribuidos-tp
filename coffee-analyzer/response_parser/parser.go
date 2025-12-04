@@ -1,17 +1,26 @@
 package responseparser
 
 import (
+	jobsessions "cofee-analyzer/jobsessions"
 	c "communication"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/op/go-logging"
 
 	mw "github.com/patricioibar/distribuidos-tp/middleware"
+	"github.com/patricioibar/distribuidos-tp/persistance"
 )
 
 var log = logging.MustGetLogger("log")
+
+const (
+	socketHeartbeatInterval = 5 * time.Second
+	socketProbeTimeout      = time.Duration(0)
+)
 
 type QueryOutput struct {
 	QueryId  int    `json:"query-id" mapstructure:"query-id"`
@@ -29,15 +38,19 @@ type ResponseParser struct {
 	socket     *c.Socket
 	querySinks []QuerySink
 	queryDone  []chan struct{}
+	jobsState  *persistance.StateManager
+	stateMutex *sync.Mutex
 }
 
-func NewResponseParser(id uuid.UUID, queries []QueryOutput, mwAddr string) *ResponseParser {
+func NewResponseParser(id uuid.UUID, queries []QueryOutput, mwAddr string, jobsState *persistance.StateManager, stateMutex *sync.Mutex) *ResponseParser {
 	if len(queries) < 4 {
 		log.Fatalf("Expected at least 4 queries, got %d", len(queries))
 	}
 	rp := ResponseParser{
-		jobID:     id,
-		queryDone: make([]chan struct{}, len(queries)),
+		jobID:      id,
+		queryDone:  make([]chan struct{}, len(queries)),
+		jobsState:  jobsState,
+		stateMutex: stateMutex,
 	}
 	var querySinks []QuerySink
 	for i, query := range queries {
@@ -77,6 +90,8 @@ func (rp *ResponseParser) callbackForQuery(i int) mw.OnMessageCallback {
 
 func (rp *ResponseParser) Start(s *c.Socket) {
 	rp.socket = s
+	stopMonitor := make(chan struct{})
+	go rp.monitorConnection(stopMonitor)
 	for _, sink := range rp.querySinks {
 		go func(sink QuerySink) {
 			if err := sink.consumer.StartConsuming(sink.callback); err != nil {
@@ -89,8 +104,40 @@ func (rp *ResponseParser) Start(s *c.Socket) {
 		rp.querySinks[i].consumer.Delete()
 		rp.querySinks[i].consumer.Close()
 	}
+	close(stopMonitor)
 	log.Infof("[%s] All queries done, closing response parser", rp.jobID)
 	s.Close()
+}
+
+func (rp *ResponseParser) monitorConnection(stop <-chan struct{}) {
+	if rp.socket == nil || rp.jobsState == nil || rp.stateMutex == nil {
+		return
+	}
+	ticker := time.NewTicker(socketHeartbeatInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			if !rp.socket.IsAlive(socketProbeTimeout) {
+				log.Infof("[%s] response connection closed, skipping activity refresh", rp.jobID)
+				return
+			}
+			rp.refreshSessionActivity()
+		}
+	}
+}
+
+func (rp *ResponseParser) refreshSessionActivity() {
+	rp.stateMutex.Lock()
+	defer rp.stateMutex.Unlock()
+	state := rp.jobsState.GetState()
+	jobState, ok := state.(*jobsessions.JobSessionsState)
+	if !ok {
+		return
+	}
+	jobState.UpdateSessionLastActivity(rp.jobID, time.Now().Unix())
 }
 
 func genericRowsToStringRows(rows [][]interface{}) [][]string {

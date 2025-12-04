@@ -1,14 +1,17 @@
 package main
 
 import (
+	"cofee-analyzer/jobsessions"
 	responseparser "cofee-analyzer/response_parser"
 	"encoding/json"
 	"math/rand"
+	"sync"
 	"time"
 
 	"communication"
 
 	"github.com/patricioibar/distribuidos-tp/innercommunication"
+	"github.com/patricioibar/distribuidos-tp/persistance"
 
 	"github.com/patricioibar/distribuidos-tp/middleware"
 
@@ -16,16 +19,23 @@ import (
 )
 
 type CoffeeAnalyzer struct {
-	Address       string
-	mwAddr        string
-	queriesConfig []responseparser.QueryOutput
-	parser        []responseparser.ResponseParser
-	jobPublisher  *middleware.Producer
-	totalWorkers  int
-	duplicateProb float64
+	Address        string
+	mwAddr         string
+	queriesConfig  []responseparser.QueryOutput
+	parser         []responseparser.ResponseParser
+	jobPublisher   *middleware.Producer
+	totalWorkers   int
+	duplicateProb  float64
+	jobsState      *persistance.StateManager
+	jobsStateMutex sync.Mutex
 }
 
 const jobPublishingExchange = "JOB_SOURCE"
+
+const jobSessionsStateLogDir = "job_sessions_state_log"
+
+const PERSISTANCE_INTERVAL = 20
+const GRACE_PERIOD_SECONDS = 60
 
 func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 	jobPublisher, _ := middleware.NewProducer(jobPublishingExchange, config.MiddlewareAddress)
@@ -33,19 +43,35 @@ func NewCoffeeAnalyzer(config *Config) *CoffeeAnalyzer {
 	// Seed RNG for duplicated message sampling
 	rand.Seed(time.Now().UnixNano())
 
+	// Initilize persistance state manager for job sessions
+	jobSessionState := jobsessions.NewJobSessionsState()
+	stateLog, err := persistance.NewStateLog(jobSessionsStateLogDir)
+	if err != nil {
+		log.Fatalf("Failed to create state log: %v", err)
+	}
+
+	jobsState, err := persistance.NewStateManager(jobSessionState, stateLog, PERSISTANCE_INTERVAL)
+	if err != nil {
+		log.Fatalf("Failed to create state manager: %v", err)
+	}
+
 	return &CoffeeAnalyzer{
-		Address:       config.ListeningAddress,
-		mwAddr:        config.MiddlewareAddress,
-		queriesConfig: config.Queries,
-		parser:        []responseparser.ResponseParser{},
-		jobPublisher:  jobPublisher,
-		totalWorkers:  config.TotalWorkers,
-		duplicateProb: config.DuplicateProb,
+		Address:        config.ListeningAddress,
+		mwAddr:         config.MiddlewareAddress,
+		queriesConfig:  config.Queries,
+		parser:         []responseparser.ResponseParser{},
+		jobPublisher:   jobPublisher,
+		totalWorkers:   config.TotalWorkers,
+		duplicateProb:  config.DuplicateProb,
+		jobsState:      jobsState,
+		jobsStateMutex: sync.Mutex{},
 	}
 }
 
 func (ca *CoffeeAnalyzer) Start() {
 	listener_socket := communication.Socket{}
+
+	ca.StartJobCleanupService()
 
 	err := listener_socket.BindAndListen(ca.Address)
 	if err != nil {
@@ -76,6 +102,15 @@ func (ca *CoffeeAnalyzer) Start() {
 	}
 }
 
+func (ca *CoffeeAnalyzer) Restart() {
+	log.Infof("Restarting Coffee Analyzer")
+	err := ca.RestoreAndCleanupInvalidJobs()
+	if err != nil {
+		log.Fatalf("Failed to restore jobs state: %v", err)
+	}
+	ca.Start()
+}
+
 func (ca *CoffeeAnalyzer) handleConnection(s *communication.Socket, id uuid.UUID) {
 	defer s.Close()
 
@@ -95,6 +130,13 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	defer s.Close()
 	var table string
 	json.Unmarshal(firstBatch, &table)
+
+	err := ca.logUploadTable(jobID, table)
+	if err != nil {
+		log.Errorf("Failed to log upload table operation for job %v, table %v: %v", jobID, table, err)
+		return
+	}
+
 	log.Infof("Receiving table %v for job %v", table, jobID)
 	producer, _ := middleware.NewProducer(table, ca.mwAddr, jobID.String())
 
@@ -140,8 +182,14 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 	}
 	producer.Close()
 	log.Infof("Finished receiving table: %v", table)
+
+	err = ca.logTableUploadFinish(jobID, table)
 	if duplicated > 0 {
 		log.Infof("Sent %d duplicated batches for table %v", duplicated, table)
+	}
+	if err != nil {
+		log.Errorf("Failed to log finish upload table operation for job %v, table %v: %v", jobID, table, err)
+		return
 	}
 }
 
@@ -195,7 +243,85 @@ func (ca *CoffeeAnalyzer) notifyNewJobToWorkersAndWait(id uuid.UUID) error {
 }
 
 func (ca *CoffeeAnalyzer) handleGetResponsesRequest(s *communication.Socket, id uuid.UUID) {
-	parser := responseparser.NewResponseParser(id, ca.queriesConfig, ca.mwAddr)
+	parser := responseparser.NewResponseParser(id, ca.queriesConfig, ca.mwAddr, ca.jobsState, &ca.jobsStateMutex)
 	ca.parser = append(ca.parser, *parser)
+
+	err := ca.logResponsesRequestStart(id)
+	if err != nil {
+		log.Errorf("Failed to log start responses operation for job %v: %v", id, err)
+		// here we could decide to send a response to the client indicating an error, that the job in not available
+		return
+	}
+
 	parser.Start(s)
+}
+
+func (ca *CoffeeAnalyzer) jobCleanupService() {
+	ticker := time.NewTicker(30 * time.Second)
+	for {
+		<-ticker.C
+		log.Infof("Running job cleanup service")
+		currentTime := time.Now().Unix()
+		ca.jobsStateMutex.Lock()
+		sessions := ca.jobsState.GetState().(*jobsessions.JobSessionsState).GetAllSessions()
+		for id, session := range sessions {
+
+			if currentTime-session.GetLastActivity() > GRACE_PERIOD_SECONDS && session.IsUploadFinish() {
+				log.Infof("Cleaning up job session %v due to inactivity", id)
+				ca.cleanupJob(*session, id)
+			}
+		}
+		ca.jobsStateMutex.Unlock()
+	}
+}
+
+func (ca *CoffeeAnalyzer) StartJobCleanupService() {
+	go ca.jobCleanupService()
+}
+
+func (ca *CoffeeAnalyzer) logResponsesRequestStart(id uuid.UUID) error {
+	op := jobsessions.NewStartResponsesOperation(id)
+	ca.jobsStateMutex.Lock()
+	err := ca.jobsState.Log(op)
+	ca.jobsStateMutex.Unlock()
+	return err
+}
+
+func (ca *CoffeeAnalyzer) logTableUploadFinish(id uuid.UUID, tableName string) error {
+	op := jobsessions.NewFinishUploadOperation(id, tableName)
+	ca.jobsStateMutex.Lock()
+	err := ca.jobsState.Log(op)
+	ca.jobsStateMutex.Unlock()
+	return err
+}
+
+func (ca *CoffeeAnalyzer) logUploadTable(id uuid.UUID, tableName string) error {
+	op := jobsessions.NewUploadTableOperation(id, tableName)
+	ca.jobsStateMutex.Lock()
+	err := ca.jobsState.Log(op)
+	ca.jobsStateMutex.Unlock()
+	return err
+}
+
+func (ca *CoffeeAnalyzer) cleanupJob(session jobsessions.JobSession, jobID uuid.UUID) {
+	// TODO
+	// borrarlo del estado y remover todas las colas correspondientes al JOB
+}
+
+func (ca *CoffeeAnalyzer) RestoreAndCleanupInvalidJobs() error {
+	log.Infof("Restoring job sessions state from persistance")
+	ca.jobsStateMutex.Lock()
+	defer ca.jobsStateMutex.Unlock()
+	err := ca.jobsState.Restore()
+	if err != nil {
+		return err
+	}
+	sessions := ca.jobsState.GetState().(*jobsessions.JobSessionsState).GetAllSessions()
+	for id, session := range sessions {
+		if !session.IsUploadFinish() {
+			log.Infof("Cleaning up incomplete job session %v during restore", id)
+			ca.cleanupJob(*session, id)
+		}
+	}
+	return nil
 }
