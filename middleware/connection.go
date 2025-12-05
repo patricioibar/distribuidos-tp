@@ -29,7 +29,13 @@ func connectExponentialRetry(url string) {
 	var c *amqp.Connection
 	retryTime := 1
 	for {
-		c, err = amqp.Dial(url)
+		c, err = amqp.DialConfig(
+			url,
+			amqp.Config{
+				FrameSize: 0,
+				Heartbeat: 10 * time.Second,
+			},
+		)
 		if err == nil {
 			break
 		}
@@ -52,4 +58,8 @@ func (r *RabbitConn) Close() error {
 		return r.conn.Close()
 	}
 	return nil
+}
+
+func (r *RabbitConn) NotifyClose(c chan *amqp.Error) {
+	r.conn.NotifyClose(c)
 }
