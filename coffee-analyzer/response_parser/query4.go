@@ -10,7 +10,7 @@ import (
 )
 
 func (rp *ResponseParser) parseQuery4Response() mw.OnMessageCallback {
-	sentBatches := bitmap.New()
+	seenBatches := bitmap.New()
 	return func(msg mw.MiddlewareMessage, done chan *mw.MessageMiddlewareError) {
 		defer func() { done <- nil }()
 		jsonStr := string(msg.Body)
@@ -24,7 +24,7 @@ func (rp *ResponseParser) parseQuery4Response() mw.OnMessageCallback {
 		switch p := receivedMsg.Payload.(type) {
 
 		case *ic.RowsBatchPayload:
-			if sentBatches.Contains(p.SeqNum) {
+			if seenBatches.Contains(p.SeqNum) {
 				return
 			}
 			parsedBatch := c.QueryResponseBatch{
@@ -42,20 +42,15 @@ func (rp *ResponseParser) parseQuery4Response() mw.OnMessageCallback {
 				log.Errorf("Failed to send batch: %v", err)
 				return
 			}
-			sentBatches.Add(p.SeqNum)
+			seenBatches.Add(p.SeqNum)
 
 		case *ic.EndSignalPayload:
-			if sentBatches.GetCardinality() != p.SeqNum {
-				log.Errorf(
-					"Received end signal but not all batches were sent!\tTotal batches: %d\tSent Batches: %d",
-					p.SeqNum, sentBatches.GetCardinality(),
-				)
-			}
+			log.Infof("EOF SeqNum for query 4: %d, seen batches: %d", p.SeqNum, seenBatches.GetCardinality())
 			rp.queryResultReceived(4, 3)
 
 		case *ic.SequenceSetPayload:
 			// batches with these sequence numbers had no information for this query
-			sentBatches.Or(p.Sequences.Bitmap)
+			seenBatches.Or(p.Sequences.Bitmap)
 
 		default:
 			log.Errorf("Unknown payload type")

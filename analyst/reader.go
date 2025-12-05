@@ -29,7 +29,7 @@ func (r *Reader) getHeader() ([]string, error) {
 	return header, nil
 }
 
-func (r *Reader) SendFileTroughSocket(columnsIdxs []int, socket communication.Socket) {
+func (r *Reader) SendFileThroughSocket(columnsIdxs []int, socket communication.Socket) (int, int) {
 	file, err := os.Open(r.FilePath)
 	if err != nil {
 		log.Fatalf("Failed to open file %s: %v", r.FilePath, err)
@@ -41,6 +41,7 @@ func (r *Reader) SendFileTroughSocket(columnsIdxs []int, socket communication.So
 	eof := false
 	errCount := 0
 	rows := [][]string{}
+	batchesCount := 0
 	for {
 		for i := 0; i < r.BatchSize; i++ {
 			record, err := reader.Read()
@@ -50,10 +51,6 @@ func (r *Reader) SendFileTroughSocket(columnsIdxs []int, socket communication.So
 			}
 			if err != nil {
 				errCount++
-				if errCount > 5 {
-					log.Fatalf("Failed to read record from file %s: %v", r.FilePath, err)
-					return
-				}
 				continue
 			}
 			filtered := make([]string, len(columnsIdxs))
@@ -77,6 +74,7 @@ func (r *Reader) SendFileTroughSocket(columnsIdxs []int, socket communication.So
 
 		if len(rows) != 0 {
 			sendRowsTroughSocket(rows, socket)
+			batchesCount++
 			rows = [][]string{}
 		}
 
@@ -84,4 +82,5 @@ func (r *Reader) SendFileTroughSocket(columnsIdxs []int, socket communication.So
 			break
 		}
 	}
+	return batchesCount, errCount
 }

@@ -135,6 +135,7 @@ func (ca *CoffeeAnalyzer) handleTableUpload(firstBatch []byte, s *communication.
 		}
 		seqNumber++
 	}
+	log.Infof("Received %d batches for table %v", seqNumber, table)
 	endSignal := innercommunication.NewEndSignal(nil, seqNumber)
 	endSignalMarshaled, _ := endSignal.Marshal()
 	producer.Send(endSignalMarshaled)

@@ -137,6 +137,24 @@ func (jw *JoinerWorker) persistRightCache(seqNum uint64, columns []string, rows 
 func (jw *JoinerWorker) Start() {
 	jw.innerStart()
 	jw.Close()
+	///
+	rightMax := uint64(0)
+	leftMax := uint64(0)
+	if jw.rightSeqRecv().GetCardinality() > 0 {
+		rightMax = jw.rightSeqRecv().Maximum()
+	}
+	if jw.leftSeqRecv().GetCardinality() > 0 {
+		leftMax = jw.leftSeqRecv().Maximum()
+	}
+
+	log.Infof("[%s] Ended.\nRight Cardinality: : %d, Right Max: %d\nLeft Cardinality: %d, Left Max: %d",
+		jw.jobID,
+		jw.rightSeqRecv().GetCardinality(),
+		rightMax,
+		jw.leftSeqRecv().GetCardinality(),
+		leftMax,
+	)
+	///
 }
 
 func (jw *JoinerWorker) Close() {

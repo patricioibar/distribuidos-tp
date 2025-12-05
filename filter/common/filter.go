@@ -2,6 +2,7 @@ package filter
 
 import (
 	"errors"
+	"math"
 	"os"
 	"slices"
 	"sync"
@@ -230,7 +231,7 @@ func (f *FilterWorker) filterBatch(p *ic.RowsBatchPayload, filterFunction func(*
 
 	filteredBatch, err := filterFunction(p)
 	if err != nil {
-		log.Errorf("Failed to filter batch: %v", err)
+		log.Warningf("Failed to filter batch: %v\n batch: %+v", err, p)
 		f.persistTotallyFiltered(p.SeqNum)
 		return
 	}
@@ -260,6 +261,22 @@ func (f *FilterWorker) Start() {
 	}
 
 	f.Close()
+
+	var maxSeen uint64 = 0
+	var maxTotallyFiltered uint64 = 0
+
+	if f.seenBitmap().GetCardinality() > 0 {
+		maxSeen = f.seenBitmap().Maximum()
+	}
+	if f.totallyFilteredBitmap().GetCardinality() > 0 {
+		maxTotallyFiltered = f.totallyFilteredBitmap().Maximum()
+	}
+
+	log.Infof("[%s] Ended. Filtered Batches: %d, Max SeqNum: %d",
+		f.jobId,
+		f.seenBitmap().GetCardinality()+f.totallyFilteredBitmap().GetCardinality(),
+		uint64(math.Max(float64(maxSeen), float64(maxTotallyFiltered))),
+	)
 }
 
 func (f *FilterWorker) Close() {

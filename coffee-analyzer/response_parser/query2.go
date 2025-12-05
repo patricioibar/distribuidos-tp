@@ -44,12 +44,7 @@ func (rp *ResponseParser) parseQuery2Response() mw.OnMessageCallback {
 			seenBatches.Add(p.SeqNum)
 
 		case *ic.EndSignalPayload:
-			if seenBatches.GetCardinality() != p.SeqNum {
-				log.Errorf(
-					"Received end signal but not all batches were sent!\tTotal batches: %d\tSent Batches: %d",
-					p.SeqNum, seenBatches.GetCardinality(),
-				)
-			}
+			log.Infof("EOF SeqNum for query 2: %d, seen batches: %d", p.SeqNum, seenBatches.GetCardinality())
 			rp.queryResultReceived(2, 1)
 
 		case *ic.SequenceSetPayload:

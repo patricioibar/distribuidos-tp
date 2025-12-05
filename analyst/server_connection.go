@@ -59,6 +59,8 @@ func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 		log.Fatalf("Failed to read directory: %v", err)
 	}
 
+	i := 0
+	errCount := 0
 	for _, file := range files {
 		if file.IsDir() {
 			continue
@@ -81,10 +83,12 @@ func (s *ServerConnection) sendDataset(table TableConfig, dataDir string) {
 
 		header, _ := reader.getHeader()
 		columnsIdxs := findColumnIdxs(table, header, file)
-		reader.SendFileTroughSocket(columnsIdxs, socket)
+		iBatch, errBatch := reader.SendFileThroughSocket(columnsIdxs, socket)
+		i += iBatch
+		errCount += errBatch
 	}
 
-	log.Infof("All files from directory %s sent successfully.", dir)
+	log.Infof("All files from directory %s sent successfully (%d batches, %d errors).", dir, i, errCount)
 }
 
 func (s *ServerConnection) getResponses() {

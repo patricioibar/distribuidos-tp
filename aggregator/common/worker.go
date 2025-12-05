@@ -5,6 +5,7 @@ import (
 	dr "aggregator/common/dataRetainer"
 	p "aggregator/common/persistence"
 	"encoding/json"
+	"math"
 	"sync"
 
 	"github.com/op/go-logging"
@@ -81,6 +82,21 @@ func (aw *AggregatorWorker) Start() {
 	}
 	<-aw.closeChan
 	aw.Close()
+
+	maxProcessed := uint64(0)
+	if aw.processedBatches().GetCardinality() > 0 {
+		maxProcessed = aw.processedBatches().Maximum()
+	}
+	maxEmpty := uint64(0)
+	if aw.emptyBatches().GetCardinality() > 0 {
+		maxEmpty = aw.emptyBatches().Maximum()
+	}
+
+	log.Infof("[%s] Ended. Processed Batches: %d, Max SeqNum: %d",
+		aw.Config.WorkerId,
+		aw.processedBatches().GetCardinality()+aw.emptyBatches().GetCardinality(),
+		uint64(math.Max(float64(maxProcessed), float64(maxEmpty))),
+	)
 }
 
 func (aw *AggregatorWorker) Close() {
