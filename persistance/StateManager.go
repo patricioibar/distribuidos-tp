@@ -78,34 +78,34 @@ func LoadStateManager(state State, stateLog StateLog, snapshotPeriod int) (*Stat
 func (sm *StateManager) Log(op Operation) error {
 	entry, err := op.Encode()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to encode operation: %w", err)
 	}
 	err = sm.stateLog.Append(entry)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to append operation to state log: %w", err)
 	}
 	err = op.ApplyTo(sm.state)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to apply operation to state: %w", err)
 	}
 	err = sm.stateLog.Commit()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to commit operation to state log: %w", err)
 	}
 	sm.logsSinceSnapshot++
 	if sm.logsSinceSnapshot >= sm.snapshotPeriod {
 		snapshotData, err := sm.state.Serialize()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to serialize state: %w", err)
 		}
 		_, err = sm.stateLog.WriteSnapshot(snapshotData)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to write snapshot to state log: %w", err)
 		}
 		sm.logsSinceSnapshot = 0
 		err = sm.stateLog.RotateWAL()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to rotate WAL: %w", err)
 		}
 	}
 

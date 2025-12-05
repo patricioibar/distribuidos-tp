@@ -40,15 +40,30 @@ func SendAllOkToEveryAggregator(addr string, jobID string, aggregatorsDone []str
 	}
 }
 
+// func AskForLogsFromDuplicatedBatches(aggregatorID string, addr string, jobID string, duplicatedBatches *bitmap.Bitmap) {
+// 	producer := getRecoveryRequestProducer(aggregatorID, addr, jobID)
+// 	if producer == nil {
+// 		return
+// 	}
+// 	defer producer.Close()
+// 	msg, _ := NewRecoveryRequest(duplicatedBatches.ToArray()).Marshal()
+// 	if err := producer.Send(msg); err != nil {
+// 		log.Errorf("Failed to publish recovery request message: %v", err)
+// 	}
+// }
+
 func AskForLogsFromDuplicatedBatches(aggregatorID string, addr string, jobID string, duplicatedBatches *bitmap.Bitmap) {
 	producer := getRecoveryRequestProducer(aggregatorID, addr, jobID)
 	if producer == nil {
 		return
 	}
 	defer producer.Close()
-	msg, _ := NewRecoveryRequest(duplicatedBatches.ToArray()).Marshal()
-	if err := producer.Send(msg); err != nil {
-		log.Errorf("Failed to publish recovery request message: %v", err)
+	arr := duplicatedBatches.ToArray()
+	for _, dupSeq := range arr {
+		msg, _ := NewRecoveryRequest([]uint64{dupSeq}).Marshal()
+		if err := producer.Send(msg); err != nil {
+			log.Errorf("Failed to publish recovery request message: %v", err)
+		}
 	}
 }
 

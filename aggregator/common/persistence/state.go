@@ -194,17 +194,27 @@ func (s *PersistentState) aggregateData(data map[string][]interface{}) error {
 
 				switch existing := s.AggregatedData[k][i].(type) {
 				case float64:
-					if newVal, ok := v.(float64); ok {
-						s.AggregatedData[k][i] = existing + newVal
-					} else {
-						return fmt.Errorf("type mismatch when merging aggregated data for key %s index %d: %T", k, i, v)
+					var value float64
+					switch v := v.(type) {
+					case float64:
+						value = v
+					case int:
+						value = float64(v)
+					default:
+						return fmt.Errorf("CASE FLOAT: type mismatch when merging aggregated data for key %s index %d: %T", k, i, v)
 					}
+					s.AggregatedData[k][i] = existing + value
 				case int:
-					if newVal, ok := v.(int); ok {
-						s.AggregatedData[k][i] = existing + newVal
-					} else {
-						return fmt.Errorf("type mismatch when merging aggregated data for key %s index %d: %T", k, i, v)
+					var value int
+					switch v := v.(type) {
+					case float64:
+						value = int(v)
+					case int:
+						value = v
+					default:
+						return fmt.Errorf("CASE INT: type mismatch when merging aggregated data for key %s index %d: %T", k, i, v)
 					}
+					s.AggregatedData[k][i] = existing + value
 				default:
 					return fmt.Errorf("unsupported data type for aggregation for key %s index %d: %T", k, i, v)
 				}

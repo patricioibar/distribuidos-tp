@@ -254,6 +254,17 @@ func (aw *AggregatorWorker) recoveryResponsesCallback(doneRecovering chan struct
 				return
 			}
 
+			// if aw.Config.QueryName == "topuser" {
+			// 	for key, val := range p.OperationData {
+			// 		if !strings.Contains(key, "8|") {
+			// 			continue
+			// 		}
+			// 		previousVal := aw.aggregatedData()[key][0].Result()
+			// 		newVal := previousVal.(float64) - val[0].(float64)
+			// 		log.Debugf("Reverting key %s: %f -> %f", key, previousVal.(float64), newVal)
+			// 	}
+			// }
+
 			log.Debugf("[%s] Reverting duplicated batch %d from worker %s", aw.jobID, p.SequenceNumber, p.WorkerID)
 			operation := pers.NewRevertBatchAggregationOp(p.SequenceNumber, p.WorkerID, p.OperationData)
 			if err := aw.state.Log(operation); err != nil {
