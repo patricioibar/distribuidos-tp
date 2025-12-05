@@ -17,17 +17,18 @@ def load_generator():
 def generate_compose_with_analysts(n=3):
     gen_mod = load_generator()
     nodes_count = {
-        "filter-years": 1,
-        "filter-hours": 1,
-        "filter-amount": 1,
-        "filter-items": 1,
-        "items-aggregator": 1,
-        "tpv-aggregator": 1,
-        "tpv-joiner": 1,
-        "topuser-aggregator": 1,
-        "topuser-birthdate-joiner": 1,
-        "analyst": n
-    }
+    "filter-TbyYear": 3,
+    "filter-TbyHour": 3,
+    "filter-TbyAmount": 3,
+    "filter-TIbyYear": 3,
+    "items-aggregator": 3,
+    "tpv-aggregator": 3,
+    "tpv-joiner": 3,
+    "topuser-aggregator": 3,
+    "topuser-birthdate-joiner": 3,
+    "monitor": 3,
+    "analyst": n,
+}
     gen_mod.generate_compose_file(COMPOSE_FILE, nodes_count)
 
 

@@ -190,7 +190,11 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 		i := 0
 		for _, row := range dataInfo.Data {
 			if i >= batchSize {
-				aw.sendAggregatedDataBatch(dataBatch, seq)
+				if seq >= aw.NextBatchToSend() {
+					log.Debugf("Sending data batch with seq %d", seq)
+					aw.sendAggregatedDataBatch(dataBatch, seq)
+					aw.persistIncrementNextBatchToSend()
+				}
 				seq++
 				dataBatch.Data = make([][]interface{}, 0)
 				i = 0
@@ -275,6 +279,17 @@ func (aw *AggregatorWorker) aggregateBatch(batch *ic.RowsBatchPayload, workerID 
 	}
 
 	aw.persistReducedData(batch.SeqNum, reducedData, workerID)
+}
+
+func (aw *AggregatorWorker) NextBatchToSend() uint64 {
+	persState, _ := aw.state.GetState().(*p.PersistentState)
+	return persState.NextBatchToSend
+}
+
+func (aw *AggregatorWorker) persistIncrementNextBatchToSend() {
+	if err := aw.state.Log(p.NewIncrementNextBatchToSendOp(0)); err != nil {
+		log.Errorf("Failed to increment last batch sent for job %s: %v", aw.jobID, err)
+	}
 }
 
 func (aw *AggregatorWorker) persistReducedData(seq uint64, reducedData map[string][]a.Aggregation, workerID string) {

@@ -3,6 +3,7 @@ package common
 import (
 	pers "aggregator/common/persistence"
 	"aggregator/common/rollback"
+	"fmt"
 	"slices"
 	"time"
 
@@ -101,6 +102,19 @@ func (aw *AggregatorWorker) deleteInputForAggregators() {
 	}
 	deleteInputQueue.Delete()
 	deleteInputQueue.Close()
+	for i := 0; i < aw.Config.WorkersCount; i++ {
+		deleteRecoveryQueue, _ := mw.ResumeConsumer(
+			aw.Config.QueryName+"-aggregator-"+fmt.Sprintf("%d", i+1),
+			"",
+			aw.Config.MiddlewareAddress,
+			aw.jobID,
+		)
+		if deleteRecoveryQueue == nil {
+			continue
+		}
+		deleteRecoveryQueue.Delete()
+		deleteRecoveryQueue.Close()
+	}
 }
 
 func (aw *AggregatorWorker) updateProcessedSeqHandlingDuplicates(p *ic.SequenceSetPayload) {
@@ -173,7 +187,7 @@ func (aw *AggregatorWorker) rollbackDuplicatedData() {
 		case <-doneRecovering:
 			log.Infof("[%s] All duplicated batches recovered", aw.jobID)
 			return
-		case <-time.After(2 * time.Second):
+		case <-time.After(30 * time.Second):
 			aw.showRemainingDuplicatedBatches()
 			aw.sendRecoveryRequests()
 		}
@@ -208,7 +222,7 @@ func (aw *AggregatorWorker) duplicatedBatchesFor(aggregatorID string) *bitmap.Bi
 
 func (aw *AggregatorWorker) receiveRecoveryResponses(doneRecovering chan struct{}) {
 	recoveryResponses, err := mw.NewConsumer(
-		aw.Config.WorkerId,
+		rollback.RecoveryResponsesSourceName(aw.Config.WorkerId),
 		rollback.RecoveryResponsesSourceName(aw.Config.WorkerId),
 		aw.Config.MiddlewareAddress,
 		aw.jobID,
@@ -253,17 +267,6 @@ func (aw *AggregatorWorker) recoveryResponsesCallback(doneRecovering chan struct
 				log.Debugf("[%s] Received duplicated recovery response for batch %d from worker %s", aw.jobID, p.SequenceNumber, p.WorkerID)
 				return
 			}
-
-			// if aw.Config.QueryName == "topuser" {
-			// 	for key, val := range p.OperationData {
-			// 		if !strings.Contains(key, "8|") {
-			// 			continue
-			// 		}
-			// 		previousVal := aw.aggregatedData()[key][0].Result()
-			// 		newVal := previousVal.(float64) - val[0].(float64)
-			// 		log.Debugf("Reverting key %s: %f -> %f", key, previousVal.(float64), newVal)
-			// 	}
-			// }
 
 			log.Debugf("[%s] Reverting duplicated batch %d from worker %s", aw.jobID, p.SequenceNumber, p.WorkerID)
 			operation := pers.NewRevertBatchAggregationOp(p.SequenceNumber, p.WorkerID, p.OperationData)

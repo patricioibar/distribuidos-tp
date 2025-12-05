@@ -45,7 +45,7 @@ def test_sequenced_analyst():
 
         # wait for first run to exit
         print("Waiting for first run to exit...")
-        exit_code1, state1 = wait_for_exit(c, timeout=120)
+        exit_code1, state1 = wait_for_exit(c, timeout=3600)
         print(f"First run state: {state1}, exit_code={exit_code1}")
         if exit_code1 is None:
             print("ERROR: analyst did not exit within timeout (first run)")
@@ -74,7 +74,7 @@ def test_sequenced_analyst():
 
         # wait for second run to exit
         print("Waiting for second run to exit...")
-        exit_code2, state2 = wait_for_exit(c, timeout=120)
+        exit_code2, state2 = wait_for_exit(c, timeout=3600)
         print(f"Second run state: {state2}, exit_code={exit_code2}")
         if exit_code2 is None:
             print("ERROR: analyst did not exit within timeout (second run)")

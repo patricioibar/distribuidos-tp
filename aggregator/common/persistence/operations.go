@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	AggregateBatchTypeID         byte = 201
-	AddEmptyBatchesTypeID        byte = 202
-	ReceiveAggregatorBatchTypeID byte = 203
-	AddAggregatorDoneTypeID      byte = 204
-	RevertBatchAggregationTypeID byte = 205
-	SetRecoveringTypeID          byte = 206
+	AggregateBatchTypeID           byte = 201
+	AddEmptyBatchesTypeID          byte = 202
+	ReceiveAggregatorBatchTypeID   byte = 203
+	AddAggregatorDoneTypeID        byte = 204
+	RevertBatchAggregationTypeID   byte = 205
+	SetRecoveringTypeID            byte = 206
+	IncrementNextBatchToSendTypeID byte = 207
 )
 
 type AggregateBatchOp struct {
@@ -334,6 +335,35 @@ func decodeStartRecoveringOp(data []byte) (pers.Operation, error) {
 	return &SetRecoveringOp{ID: data[0], Seq: seq, Value: value}, nil
 }
 
+type IncrementNextBatchToSendOp struct {
+	ID  byte
+	Seq uint64
+}
+
+func NewIncrementNextBatchToSendOp(seq uint64) *IncrementNextBatchToSendOp {
+	return &IncrementNextBatchToSendOp{ID: IncrementNextBatchToSendTypeID, Seq: seq}
+}
+func (op *IncrementNextBatchToSendOp) TypeID() byte                { return op.ID }
+func (op *IncrementNextBatchToSendOp) SeqNumber() uint64           { return op.Seq }
+func (op *IncrementNextBatchToSendOp) ApplyTo(st pers.State) error { return st.Apply(op) }
+func (op *IncrementNextBatchToSendOp) Encode() ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	if err := buf.WriteByte(op.TypeID()); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(buf, binary.LittleEndian, op.Seq); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+func decodeIncrementLastBatchSentOp(data []byte) (pers.Operation, error) {
+	if len(data) < 1+8 {
+		return nil, fmt.Errorf("invalid IncrementLastBatchSent op length: %d", len(data))
+	}
+	seq := binary.LittleEndian.Uint64(data[1:9])
+	return &IncrementNextBatchToSendOp{ID: data[0], Seq: seq}, nil
+}
+
 func init() {
 	// register operations
 	pers.RegisterOperation(AggregateBatchTypeID, decodeAggregateBatchOp)
@@ -342,4 +372,5 @@ func init() {
 	pers.RegisterOperation(AddAggregatorDoneTypeID, decodeAddAggregatorDoneOp)
 	pers.RegisterOperation(RevertBatchAggregationTypeID, decodeRevertBatchAggregationOp)
 	pers.RegisterOperation(SetRecoveringTypeID, decodeStartRecoveringOp)
+	pers.RegisterOperation(IncrementNextBatchToSendTypeID, decodeIncrementLastBatchSentOp)
 }
