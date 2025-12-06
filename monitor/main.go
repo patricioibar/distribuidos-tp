@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"communication"
 	"context"
-	"encoding/gob"
 	"log"
 	"net"
 	"os"
@@ -22,6 +20,7 @@ type Config struct {
 	MonitorId     string
 	MonitorIdInt  int
 	monitorsCount int
+	NodesList     []string
 }
 
 func getConfig() Config {
@@ -29,12 +28,18 @@ func getConfig() Config {
 	monitorIdInt, _ := strconv.Atoi(strings.Split(monitorId, "-")[1])
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	monitorsCount, _ := strconv.Atoi(os.Getenv("MONITORS_COUNT"))
+	nodesListStr := os.Getenv("NODES_LIST")
+	nodesList := []string{}
+	if nodesListStr != "" {
+		nodesList = strings.Split(nodesListStr, ",")
+	}
 
 	return Config{
 		Port:          port,
 		MonitorId:     monitorId,
 		MonitorIdInt:  monitorIdInt,
 		monitorsCount: monitorsCount,
+		NodesList:     nodesList,
 	}
 }
 
@@ -49,13 +54,13 @@ type Monitor struct {
 }
 
 const (
-	MSG_MONITOR      byte = 1
-	MSG_WORKER       byte = 2
-	MSG_ELECTION     byte = 3
-	MSG_OK           byte = 4
-	MSG_COORDINATOR  byte = 5
-	MSG_ASK_METADATA byte = 6
-	MSG_METADATA     byte = 7
+	MSG_MONITOR           byte = 1
+	MSG_WORKER            byte = 2
+	MSG_ELECTION          byte = 3
+	MSG_OK                byte = 4
+	MSG_COORDINATOR       byte = 5
+	MSG_ASK_ACTUAL_LEADER byte = 6
+	MSG_METADATA          byte = 7
 )
 
 const (
@@ -66,10 +71,21 @@ func main() {
 	config := getConfig()
 	log.Printf("Starting...")
 
+	monitorLastSeen := make(map[string]time.Time)
+	workerLastSeen := make(map[string]time.Time)
+
+	for _, v := range config.NodesList {
+		if strings.Contains(v, "monitor") {
+			monitorLastSeen[v] = time.Now().Add(TIMEOUT * 2)
+		} else {
+			workerLastSeen[v] = time.Now().Add(TIMEOUT * 2)
+		}
+	}
+
 	monitor := &Monitor{
 		mu:                    sync.Mutex{},
-		monitorLastSeen:       make(map[string]time.Time),
-		workerLastSeen:        make(map[string]time.Time),
+		monitorLastSeen:       monitorLastSeen,
+		workerLastSeen:        workerLastSeen,
 		okElectionMessageChan: make(chan bool, 10),
 		newCoordinatorChan:    make(chan bool, 10),
 		currentLeader:         "",
@@ -91,7 +107,7 @@ func main() {
 	go communication.SendHeartbeatToMonitors("MONITOR", config.MonitorId, config.monitorsCount)
 
 	// espero un poco para la primera eleccion
-	askForMetadata(config)
+	askForActualLeader(config)
 	time.Sleep(1000 * time.Millisecond)
 	startElection(config, monitor)
 
@@ -149,9 +165,9 @@ func main() {
 	}
 }
 
-func askForMetadata(config Config) {
+func askForActualLeader(config Config) {
 	addresses, _ := communication.ResolveAddresses(config.MonitorId, config.monitorsCount)
-	msg := append([]byte{MSG_ASK_METADATA}, []byte(config.MonitorId)...)
+	msg := append([]byte{MSG_ASK_ACTUAL_LEADER}, []byte(config.MonitorId)...)
 	communication.SendMessageToMonitors(addresses, msg)
 }
 
@@ -175,36 +191,38 @@ func handleMessage(msg []byte, config Config, monitor *Monitor) {
 	}
 
 	msgType := msg[0]
-	payload := string(msg[1:])
+	payload := msg[1:]
 
 	switch msgType {
 
 	case MSG_MONITOR:
 		monitor.mu.Lock()
-		monitor.monitorLastSeen[payload] = time.Now()
+		monitor.monitorLastSeen[string(payload)] = time.Now()
 		monitor.mu.Unlock()
 
 	case MSG_WORKER:
 		monitor.mu.Lock()
 		defer monitor.mu.Unlock()
-		monitor.workerLastSeen[payload] = time.Now()
+		monitor.workerLastSeen[string(payload)] = time.Now()
 
-	case MSG_ASK_METADATA:
+	case MSG_ASK_ACTUAL_LEADER:
 		monitor.mu.Lock()
 		defer monitor.mu.Unlock()
 		if monitor.currentLeader == config.MonitorId {
-			go notifyActualLeaderAndMetadata(payload, config, monitor)
+			go notifyActualLeader(string(payload), config, monitor)
 		}
 
 	case MSG_ELECTION:
-		log.Printf("Received ELECTION from %s", payload)
-		senderID, _ := strconv.Atoi(strings.Split(payload, "-")[1])
+		payloadStr := string(payload)
+		log.Printf("Received ELECTION from %s", payloadStr)
+		senderID, _ := strconv.Atoi(strings.Split(payloadStr, "-")[1])
 		monitor.mu.Lock()
 		monitor.currentLeader = ""
+		monitor.monitorLastSeen[string(payload)] = time.Now()
 		monitor.mu.Unlock()
 
 		if senderID < config.MonitorIdInt {
-			log.Printf("Sending OK to %s (I have higher ID)", payload)
+			log.Printf("Sending OK to %s (I have higher ID)", payloadStr)
 			addresses, _ := communication.ResolveAddresses(config.MonitorId, config.monitorsCount, senderID)
 			msg := append([]byte{MSG_OK}, []byte(config.MonitorId)...)
 			communication.SendMessageToMonitors(addresses, msg)
@@ -220,17 +238,15 @@ func handleMessage(msg []byte, config Config, monitor *Monitor) {
 	case MSG_COORDINATOR:
 		monitor.mu.Lock()
 		defer monitor.mu.Unlock()
-		monitor.currentLeader = payload
+		monitor.monitorLastSeen[string(payload)] = time.Now()
+		monitor.currentLeader = string(payload)
 		monitor.electionInProgress = false
 		monitor.newCoordinatorChan <- true
 		log.Printf("New leader elected: %s", monitor.currentLeader)
-
-	case MSG_METADATA:
-		receiveMetadata(payload, monitor)
 	}
 }
 
-func notifyActualLeaderAndMetadata(idStr string, config Config, monitor *Monitor) {
+func notifyActualLeader(idStr string, config Config, monitor *Monitor) {
 	monitor.mu.Lock()
 	leader := monitor.currentLeader
 	monitor.mu.Unlock()
@@ -239,59 +255,6 @@ func notifyActualLeaderAndMetadata(idStr string, config Config, monitor *Monitor
 	if leader != "" {
 		msg := append([]byte{MSG_COORDINATOR}, []byte(leader)...)
 		communication.SendMessageToMonitors(addresses, msg)
-	}
-	sendMetadata(addresses, monitor)
-}
-
-type MetadataPayload struct {
-	MonitorLastSeen map[string]time.Time `json:"monitor_last_seen"`
-	WorkerLastSeen  map[string]time.Time `json:"worker_last_seen"`
-}
-
-func sendMetadata(addresses []*net.UDPAddr, monitor *Monitor) {
-	monitor.mu.Lock()
-	snap := MetadataPayload{
-		MonitorLastSeen: monitor.monitorLastSeen,
-		WorkerLastSeen:  monitor.workerLastSeen,
-	}
-	monitor.mu.Unlock()
-
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(snap); err != nil {
-		log.Printf("Failed to encode metadata: %v", err)
-		return
-	}
-
-	snapshotBytes := buf.Bytes()
-	log.Printf("Sending metadata to %v (size: %d bytes)", addresses[0], len(snapshotBytes))
-	msg := append([]byte{MSG_METADATA}, snapshotBytes...)
-	communication.SendMessageToMonitors(addresses, msg)
-}
-
-func receiveMetadata(data string, monitor *Monitor) {
-	var snap MetadataPayload
-	buf := bytes.NewBuffer([]byte(data))
-	dec := gob.NewDecoder(buf)
-	if err := dec.Decode(&snap); err != nil {
-		log.Printf("Failed to decode metadata: %v", err)
-		return
-	}
-	log.Printf("Received METADATA: \n%+v", snap)
-
-	monitor.mu.Lock()
-	defer monitor.mu.Unlock()
-
-	for k, v := range snap.MonitorLastSeen {
-		if existing, ok := monitor.monitorLastSeen[k]; !ok || v.After(existing) {
-			monitor.monitorLastSeen[k] = v
-		}
-	}
-
-	for k, v := range snap.WorkerLastSeen {
-		if existing, ok := monitor.workerLastSeen[k]; !ok || v.After(existing) {
-			monitor.workerLastSeen[k] = v
-		}
 	}
 }
 
@@ -302,7 +265,7 @@ func startElection(config Config, monitor *Monitor) {
 		return
 	}
 	monitor.electionInProgress = true
-	monitor.newCoordinatorChan = make(chan bool, 10)
+	monitor.okElectionMessageChan = make(chan bool, 10)
 	monitor.newCoordinatorChan = make(chan bool, 10)
 	monitor.mu.Unlock()
 	log.Printf(">>> Starting ELECTION (my ID: %d)", config.MonitorIdInt)

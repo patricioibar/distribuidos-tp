@@ -75,7 +75,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyYear-1
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyYear-1"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyYear"
@@ -103,7 +103,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyYear-2
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyYear-2"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyYear"
@@ -131,7 +131,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyYear-3
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyYear-3"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyYear"
@@ -160,7 +160,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyHour-1
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyHour-1"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyHour"
@@ -188,7 +188,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyHour-2
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyHour-2"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyHour"
@@ -216,7 +216,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyHour-3
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyHour-3"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyHour"
@@ -245,7 +245,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyAmount-1
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyAmount-1"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyAmount"
@@ -273,7 +273,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyAmount-2
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyAmount-2"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyAmount"
@@ -301,7 +301,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TbyAmount-3
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TbyAmount-3"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TbyAmount"
@@ -330,7 +330,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TIbyYear-1
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TIbyYear-1"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TIbyYear"
@@ -358,7 +358,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TIbyYear-2
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TIbyYear-2"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TIbyYear"
@@ -386,7 +386,7 @@ services:
       dockerfile: filter/Dockerfile
     container_name: filter-TIbyYear-3
     environment:
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       FILTER_ID: "filter-TIbyYear-3"
       WORKERS_COUNT: "3"
       FILTER_TYPE: "TIbyYear"
@@ -423,10 +423,12 @@ services:
       QUERY_NAME: "items"
       INPUT_NAME: "filtered-years-items"
       OUTPUT_NAME: "items-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./items-aggregator-1/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -454,10 +456,12 @@ services:
       QUERY_NAME: "items"
       INPUT_NAME: "filtered-years-items"
       OUTPUT_NAME: "items-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./items-aggregator-2/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -485,10 +489,12 @@ services:
       QUERY_NAME: "items"
       INPUT_NAME: "filtered-years-items"
       OUTPUT_NAME: "items-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./items-aggregator-3/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -517,11 +523,13 @@ services:
       QUERY_NAME: "items"
       INPUT_NAME: "items-reducer_input"
       OUTPUT_NAME: "items-reducer_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_subtotal\",\"largest\":true}, {\"amount-retained\":1,\"group-by\":\"year-month\",\"value\":\"sum_quantity\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: 3
+    volumes:
+      - ./items-reducer/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -550,10 +558,12 @@ services:
       RIGHT_INPUT_NAME: "items-reducer_output"
       LEFT_INPUT_NAME: "menu_items"
       OUTPUT_NAME: "query2_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./items-names-joiner/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -582,10 +592,12 @@ services:
       QUERY_NAME: "tpv"
       INPUT_NAME: "filtered-transactions-yearhour"
       OUTPUT_NAME: "tpv-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./tpv-aggregator-1/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -613,10 +625,12 @@ services:
       QUERY_NAME: "tpv"
       INPUT_NAME: "filtered-transactions-yearhour"
       OUTPUT_NAME: "tpv-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./tpv-aggregator-2/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -644,10 +658,12 @@ services:
       QUERY_NAME: "tpv"
       INPUT_NAME: "filtered-transactions-yearhour"
       OUTPUT_NAME: "tpv-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./tpv-aggregator-3/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -676,10 +692,12 @@ services:
       QUERY_NAME: "tpv"
       INPUT_NAME: "tpv-reducer_input"
       OUTPUT_NAME: "tpv-reducer_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: 3
+    volumes:
+      - ./tpv-reducer/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -708,10 +726,12 @@ services:
       RIGHT_INPUT_NAME: "stores"
       LEFT_INPUT_NAME: "tpv-reducer_output"
       OUTPUT_NAME: "query3_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./tpv-joiner-1/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -739,10 +759,12 @@ services:
       RIGHT_INPUT_NAME: "stores"
       LEFT_INPUT_NAME: "tpv-reducer_output"
       OUTPUT_NAME: "query3_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./tpv-joiner-2/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -770,10 +792,12 @@ services:
       RIGHT_INPUT_NAME: "stores"
       LEFT_INPUT_NAME: "tpv-reducer_output"
       OUTPUT_NAME: "query3_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./tpv-joiner-3/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -802,10 +826,12 @@ services:
       QUERY_NAME: "topuser"
       INPUT_NAME: "filtered-transactions-year"
       OUTPUT_NAME: "topuser-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-aggregator-1/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -833,10 +859,12 @@ services:
       QUERY_NAME: "topuser"
       INPUT_NAME: "filtered-transactions-year"
       OUTPUT_NAME: "topuser-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-aggregator-2/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -864,10 +892,12 @@ services:
       QUERY_NAME: "topuser"
       INPUT_NAME: "filtered-transactions-year"
       OUTPUT_NAME: "topuser-reducer_input"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-aggregator-3/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -896,11 +926,13 @@ services:
       QUERY_NAME: "topuser"
       INPUT_NAME: "topuser-reducer_input"
       OUTPUT_NAME: "topuser-reducer_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       RETAININGS: "[{\"amount-retained\":3,\"group-by\":\"store_id\",\"value\":\"count_transaction_id\",\"largest\":true}]"
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-reducer/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -929,10 +961,12 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-birthdate-joiner-1/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -960,10 +994,12 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-birthdate-joiner-2/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -991,10 +1027,12 @@ services:
       RIGHT_INPUT_NAME: "topuser-reducer_output"
       LEFT_INPUT_NAME: "users"
       OUTPUT_NAME: "topuser-birthdate-joiner_output"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-birthdate-joiner-3/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -1023,10 +1061,12 @@ services:
       RIGHT_INPUT_NAME: "topuser-birthdate-joiner_output"
       LEFT_INPUT_NAME: "stores"
       OUTPUT_NAME: "query4_sink"
-      LOG_LEVEL: "DEBUG"
+      LOG_LEVEL: "INFO"
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: 3
+    volumes:
+      - ./topuser-storename-joiner/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -1049,6 +1089,7 @@ services:
     environment:
       MONITOR_ID: monitor-1
       MONITORS_COUNT: 3
+      NODES_LIST: "filter-TbyYear-1,filter-TbyYear-2,filter-TbyYear-3,filter-TbyHour-1,filter-TbyHour-2,filter-TbyHour-3,filter-TbyAmount-1,filter-TbyAmount-2,filter-TbyAmount-3,filter-TIbyYear-1,filter-TIbyYear-2,filter-TIbyYear-3,items-aggregator-1,items-aggregator-2,items-aggregator-3,tpv-aggregator-1,tpv-aggregator-2,tpv-aggregator-3,tpv-joiner-1,tpv-joiner-2,tpv-joiner-3,topuser-aggregator-1,topuser-aggregator-2,topuser-aggregator-3,topuser-birthdate-joiner-1,topuser-birthdate-joiner-2,topuser-birthdate-joiner-3,monitor-1,monitor-2,monitor-3"
       PORT: 9000
     depends_on:
       rabbitmq:
@@ -1072,6 +1113,7 @@ services:
     environment:
       MONITOR_ID: monitor-2
       MONITORS_COUNT: 3
+      NODES_LIST: "filter-TbyYear-1,filter-TbyYear-2,filter-TbyYear-3,filter-TbyHour-1,filter-TbyHour-2,filter-TbyHour-3,filter-TbyAmount-1,filter-TbyAmount-2,filter-TbyAmount-3,filter-TIbyYear-1,filter-TIbyYear-2,filter-TIbyYear-3,items-aggregator-1,items-aggregator-2,items-aggregator-3,tpv-aggregator-1,tpv-aggregator-2,tpv-aggregator-3,tpv-joiner-1,tpv-joiner-2,tpv-joiner-3,topuser-aggregator-1,topuser-aggregator-2,topuser-aggregator-3,topuser-birthdate-joiner-1,topuser-birthdate-joiner-2,topuser-birthdate-joiner-3,monitor-1,monitor-2,monitor-3"
       PORT: 9000
     depends_on:
       rabbitmq:
@@ -1095,6 +1137,7 @@ services:
     environment:
       MONITOR_ID: monitor-3
       MONITORS_COUNT: 3
+      NODES_LIST: "filter-TbyYear-1,filter-TbyYear-2,filter-TbyYear-3,filter-TbyHour-1,filter-TbyHour-2,filter-TbyHour-3,filter-TbyAmount-1,filter-TbyAmount-2,filter-TbyAmount-3,filter-TIbyYear-1,filter-TIbyYear-2,filter-TIbyYear-3,items-aggregator-1,items-aggregator-2,items-aggregator-3,tpv-aggregator-1,tpv-aggregator-2,tpv-aggregator-3,tpv-joiner-1,tpv-joiner-2,tpv-joiner-3,topuser-aggregator-1,topuser-aggregator-2,topuser-aggregator-3,topuser-birthdate-joiner-1,topuser-birthdate-joiner-2,topuser-birthdate-joiner-3,monitor-1,monitor-2,monitor-3"
       PORT: 9000
     depends_on:
       rabbitmq:
