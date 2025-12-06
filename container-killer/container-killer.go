@@ -102,21 +102,27 @@ func fillDeathList(killCount int, containers []container.Summary, monitorsCount 
 	fmt.Printf("Selecting %d containers to kill...\n", killCount)
 	deathList := make([]string, 0, killCount)
 	chosenMonitors := 0
+	runningMonitors := 0
+
+	for i := range containers {
+		name := containers[i].Names[0]
+		if strings.Contains(name, "/monitor") && containers[i].State == "running" {
+			runningMonitors++
+		}
+	}
 
 	for i := 0; i < killCount; i++ {
 		// 1 - elegir un contenedor random y si ya esta en deathlist o no esta corriendo elegir otro
 		index := rand.Intn(len(containers))
 		name := containers[index].Names[0]
-		if strings.Contains(name, "coffee-analyzer") {
-			continue
-		}
+
 		if slices.Contains(deathList, name) || containers[index].State != "running" {
 			log.Printf("⚠️ Container %s already selected or not running, picking another...\n", containers[index].Names[0])
 			i--
 			continue
 		}
 		// 2 - si es /analyst o /monitor o /rabbitmq elegir otro
-		if strings.Contains(name, "/analyst") || strings.Contains(name, "/monitor") || strings.Contains(name, "/rabbitmq") {
+		if strings.Contains(name, "/analyst") || strings.Contains(name, "/rabbitmq") || strings.Contains(name, "/coffee-analyzer") {
 			log.Printf("☕ Skipping analyst or rabbitmq or monitor containers: %s\n", name)
 			i--
 			continue
@@ -124,8 +130,8 @@ func fillDeathList(killCount int, containers []container.Summary, monitorsCount 
 		// 3 - si elijo un monitor y ya estan todos elegidos elegir otro contenedor
 		if strings.Contains(name, "/monitor") {
 			chosenMonitors++
-			if chosenMonitors >= monitorsCount {
-				log.Printf("⚠️ All monitors already selected, picking another container...\n")
+			if chosenMonitors >= runningMonitors {
+				// ⚠️ Can't kill every monitor, pick another container
 				chosenMonitors--
 				i--
 				continue

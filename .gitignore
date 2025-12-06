@@ -1,4 +1,7 @@
 *.data/
+*/.data/
+/analyst/.data
 *results/
+*/results/
 *__pycache__/
 *.sh

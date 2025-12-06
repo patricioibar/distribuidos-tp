@@ -186,14 +186,13 @@ func ResolveAddresses(nodeId string, monitorsCount int, addressList ...int) ([]*
 	return monitorAddresses, nil
 }
 
-func SendMessageToMonitors(addresses []*net.UDPAddr, msg string) {
+func SendMessageToMonitors(addresses []*net.UDPAddr, msg []byte) {
 	for _, addr := range addresses {
 		conn, err := net.DialUDP("udp", nil, addr)
 		if err != nil {
-			fmt.Printf("error dialing UDP to address: %v %s with message: %s \n", err, addr.String(), msg)
+			fmt.Printf("error dialing UDP to address: %v %s", err, addr.String())
 			continue
 		}
-		msg := []byte(msg)
 		_, err = conn.Write(msg)
 		if err != nil {
 			fmt.Println("error sending message:", err)
@@ -206,11 +205,23 @@ func (s *Socket) GetRemoteAddress() string {
 	return s.conn.RemoteAddr().String()
 }
 
+const (
+	MSG_MONITOR byte = 1
+	MSG_WORKER  byte = 2
+)
+
 func SendHeartbeatToMonitors(heartBeat string, nodeID string, monitorsCount int) {
 	t := time.NewTicker(250 * time.Millisecond)
 	addresses, _ := ResolveAddresses(nodeID, monitorsCount)
-
+	var firstByte byte
+	switch heartBeat {
+	case "MONITOR":
+		firstByte = MSG_MONITOR
+	case "WORKER":
+		firstByte = MSG_WORKER
+	}
+	msg := append([]byte{firstByte}, []byte(nodeID)...)
 	for range t.C {
-		SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", heartBeat, nodeID))
+		SendMessageToMonitors(addresses, msg)
 	}
 }

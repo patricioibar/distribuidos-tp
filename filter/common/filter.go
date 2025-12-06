@@ -230,7 +230,7 @@ func (f *FilterWorker) filterBatch(p *ic.RowsBatchPayload, filterFunction func(*
 
 	filteredBatch, err := filterFunction(p)
 	if err != nil {
-		log.Errorf("Failed to filter batch: %v", err)
+		log.Warningf("Error filtering batch %d: %v", p.SeqNum, err)
 		f.persistTotallyFiltered(p.SeqNum)
 		return
 	}

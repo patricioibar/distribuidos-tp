@@ -5,6 +5,8 @@ import (
 	dr "aggregator/common/dataRetainer"
 	p "aggregator/common/persistence"
 	"encoding/json"
+	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/op/go-logging"
@@ -187,11 +189,56 @@ func (aw *AggregatorWorker) sendRetainedData(differentFormats []dr.RetainedData)
 
 		batchSize := aw.Config.BatchSize
 
+		// Sort dataInfo.Data for consistent ordering
+		sort.Slice(dataInfo.Data, func(i, j int) bool {
+			for k := 0; k < len(dataInfo.KeyColumns) && k < len(dataInfo.Data[i]) && k < len(dataInfo.Data[j]); k++ {
+				valI := dataInfo.Data[i][k]
+				valJ := dataInfo.Data[j][k]
+				if valI == nil && valJ == nil {
+					continue
+				}
+				if valI == nil {
+					return true
+				}
+				if valJ == nil {
+					return false
+				}
+				switch v1 := valI.(type) {
+				case string:
+					if v2, ok := valJ.(string); ok {
+						if v1 != v2 {
+							return v1 < v2
+						}
+					}
+				case float64:
+					if v2, ok := valJ.(float64); ok {
+						if v1 != v2 {
+							return v1 < v2
+						}
+					}
+				case int:
+					if v2, ok := valJ.(int); ok {
+						if v1 != v2 {
+							return v1 < v2
+						}
+					}
+				default:
+					v1Str := fmt.Sprintf("%v", valI)
+					v2Str := fmt.Sprintf("%v", valJ)
+					if v1Str != v2Str {
+						return v1Str < v2Str
+					}
+				}
+
+			}
+			return false
+		})
+
 		i := 0
 		for _, row := range dataInfo.Data {
 			if i >= batchSize {
 				if seq >= aw.NextBatchToSend() {
-					log.Debugf("Sending data batch with seq %d", seq)
+					// log.Debugf("Sending data batch with seq %d", seq)
 					aw.sendAggregatedDataBatch(dataBatch, seq)
 					aw.persistIncrementNextBatchToSend()
 				}

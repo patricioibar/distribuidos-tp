@@ -139,14 +139,6 @@ func getHandleIncommingJob(config Config, runningFilters map[string]*filter.Filt
 
 }
 
-func SendHeartbeatToMonitors(config Config) {
-	addresses, _ := communication.ResolveAddresses(config.FilterId, config.MonitorsCount)
-	t := time.NewTicker(250 * time.Millisecond)
-	for range t.C {
-		communication.SendMessageToMonitors(addresses, fmt.Sprintf("%s:%s", "WORKER", config.FilterId))
-	}
-}
-
 func shutdownGracefully(runningFilters map[string]*filter.FilterWorker, input mw.MessageMiddleware) {
 	log.Info("Starting graceful shutdown sequence...")
 
