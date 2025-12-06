@@ -109,6 +109,9 @@ func (rp *ResponseParser) Start(s *c.Socket) {
 	}
 	for i, done := range rp.queryDone {
 		<-done
+		if rp.querySinks[i].consumer == nil {
+			continue
+		}
 		rp.querySinks[i].consumer.Delete()
 		rp.querySinks[i].consumer.Close()
 	}
