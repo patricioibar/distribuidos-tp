@@ -3,6 +3,7 @@ package communication
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -162,15 +163,31 @@ func (s *Socket) ReceiveUUID() (uuid.UUID, error) {
 }
 
 func ResolveAddresses(nodeId string, monitorsCount int, addressList ...int) ([]*net.UDPAddr, error) {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+	ch := make(chan *net.UDPAddr, 1)
+	errCh := make(chan error, 1)
+	timeout := 100 * time.Millisecond
 	var monitorAddresses []*net.UDPAddr
+
 	if len(addressList) > 0 {
 		for _, monitorIdInt := range addressList {
 			monitorId := fmt.Sprintf("monitor-%d", monitorIdInt)
 			addrStr := fmt.Sprintf("%s:9000", monitorId)
-			addr, _ := net.ResolveUDPAddr("udp", addrStr)
-			monitorAddresses = append(monitorAddresses, addr)
+			go resolveAddress(ch, errCh, addrStr)
+
+			select {
+			case addr := <-ch:
+				monitorAddresses = append(monitorAddresses, addr)
+			case err := <-errCh:
+				log.Printf("error resolving address for %s: %v\n", addrStr, err)
+				continue
+			case <-time.After(timeout):
+				log.Printf("resolve timeout for %s\n", addrStr)
+				//return nil, log.Errorf("resolve timeout for %s", addrStr)
+				continue
+			}
 		}
-		fmt.Printf("%v\n", monitorAddresses)
+		log.Printf("%v\n", monitorAddresses)
 	} else {
 		for i := 1; i <= monitorsCount; i++ {
 			monitorId := fmt.Sprintf("monitor-%d", i)
@@ -178,25 +195,49 @@ func ResolveAddresses(nodeId string, monitorsCount int, addressList ...int) ([]*
 				continue
 			}
 			addrStr := fmt.Sprintf("%s:9000", monitorId)
-			addr, _ := net.ResolveUDPAddr("udp", addrStr)
-			monitorAddresses = append(monitorAddresses, addr)
+			go resolveAddress(ch, errCh, addrStr)
+			select {
+			case addr := <-ch:
+				log.Printf("resolved address: %s\n", addr.String())
+				monitorAddresses = append(monitorAddresses, addr)
+			case err := <-errCh:
+				log.Printf("error resolving address for %s: %v\n", addrStr, err)
+				continue
+			case <-time.After(timeout):
+				log.Printf("resolve timeout for %s\n", addrStr)
+				continue
+			}
 		}
 	}
 
 	return monitorAddresses, nil
 }
 
+func resolveAddress(ch chan *net.UDPAddr, errCh chan error, addrStr string) {
+	addr, err := net.ResolveUDPAddr("udp", addrStr)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	ch <- addr
+}
+
 func SendMessageToMonitors(addresses []*net.UDPAddr, msg string) {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	for _, addr := range addresses {
-		conn, err := net.DialUDP("udp", nil, addr)
+		if addr == nil {
+			log.Println("Invalid address, skipping")
+			continue
+		}
+		conn, err := net.DialTimeout("udp", addr.String(), 100*time.Millisecond)
 		if err != nil {
-			fmt.Printf("error dialing UDP to address: %v %s with message: %s \n", err, addr.String(), msg)
+			log.Printf("error dialing UDP to address: %v %s with message: %s \n", err, addr.String(), msg)
 			continue
 		}
 		msg := []byte(msg)
 		_, err = conn.Write(msg)
 		if err != nil {
-			fmt.Println("error sending message:", err)
+			log.Println("error sending message:", err)
 		}
 		conn.Close()
 	}

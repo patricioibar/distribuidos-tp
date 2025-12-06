@@ -107,17 +107,14 @@ func fillDeathList(killCount int, containers []container.Summary, monitorsCount 
 		// 1 - elegir un contenedor random y si ya esta en deathlist o no esta corriendo elegir otro
 		index := rand.Intn(len(containers))
 		name := containers[index].Names[0]
-		if strings.Contains(name, "coffee-analyzer") {
-			continue
-		}
 		if slices.Contains(deathList, name) || containers[index].State != "running" {
 			log.Printf("⚠️ Container %s already selected or not running, picking another...\n", containers[index].Names[0])
 			i--
 			continue
 		}
 		// 2 - si es /analyst o /monitor o /rabbitmq elegir otro
-		if strings.Contains(name, "/analyst") || strings.Contains(name, "/monitor") || strings.Contains(name, "/rabbitmq") {
-			log.Printf("☕ Skipping analyst or rabbitmq or monitor containers: %s\n", name)
+		if strings.Contains(name, "/analyst") || strings.Contains(name, "/coffee-analyzer") || strings.Contains(name, "/rabbitmq") {
+			log.Printf("☕ Skipping analyst or rabbitmq or coffee-analyzer containers: %s\n", name)
 			i--
 			continue
 		}

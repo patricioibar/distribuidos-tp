@@ -477,9 +477,15 @@ def add_coffeeAnalyzer_service(total_workers: int, monitors_count: int) -> str:
 '''
     return coffee_analyzer_template
 
-def add_monitors(num_monitors: int) -> str:
+def add_monitors(num_monitors: int, all_nodes: [str]) -> str:
   result = ""
   for i in range(1, num_monitors + 1):
+    this_monitor = f"monitor-{i}"
+
+    # all other nodes EXCEPT this one
+    others = [n for n in all_nodes if n != this_monitor and not n.startswith("analyst")]
+    other_nodes_str = ",".join(others)
+
     monitor_template = f'''
   monitor-{i}:
     image: monitor:latest
@@ -491,6 +497,7 @@ def add_monitors(num_monitors: int) -> str:
       MONITOR_ID: monitor-{i}
       MONITORS_COUNT: {num_monitors}
       PORT: 9000
+      OTHER_NODES: "{other_nodes_str}"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -557,6 +564,11 @@ def generate_compose_file(fileName: str, nodes_count: dict):
         5  # For reducers and other single services
     )
 
+    all_nodes = []
+    for name, count in nodes_count.items():
+      for i in range(1, count + 1):
+        all_nodes.append(f"{name}-{i}")
+
     compose_content = f'''
 services:
 {add_rabbitmq_service()}
@@ -576,7 +588,7 @@ services:
 {add_topUserReducer_service(num_topuser_aggregators, num_monitors)}
 {add_topUserBirthdate_joiner(num_topuser_birthdate_joiners, num_monitors)}
 {add_topUserStoreName_joiner(num_monitors)}
-{add_monitors(num_monitors)}
+{add_monitors(num_monitors, all_nodes)}
 {add_volumes_networks()}
 '''
 
