@@ -1,0 +1,1 @@
+go run container_killer 3 5 3 3000 5000
