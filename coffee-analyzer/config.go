@@ -13,26 +13,31 @@ const configFilePath = "config.json"
 
 // Config represents the application's configuration structure.
 type Config struct {
-	ListeningAddress  string           `json:"listening-address" mapstructure:"listening-address"`
-	MiddlewareAddress string           `json:"middleware-address" mapstructure:"middleware-address"`
-	LogLevel          string           `json:"log-level" mapstructure:"log-level"`
-	Queries           []rp.QueryOutput `json:"queries" mapstructure:"queries"`
-	TotalWorkers      int              `json:"total-workers" mapstructure:"total-workers"`
-	DuplicateProb     float64          `json:"duplicate-prob" mapstructure:"duplicate-prob"`
-	MonitorsCount     string           `json:"monitors-count" mapstructure:"monitors-count"`
+	ListeningAddress      string           `json:"listening-address" mapstructure:"listening-address"`
+	MiddlewareAddress     string           `json:"middleware-address" mapstructure:"middleware-address"`
+	MiddlewareHTTPAddress string           `json:"middleware-http-address" mapstructure:"middleware-http-address"`
+	MiddlewareUsername    string           `json:"middleware-username" mapstructure:"middleware-username"`
+	MiddlewarePassword    string           `json:"middleware-password" mapstructure:"middleware-password"`
+	LogLevel              string           `json:"log-level" mapstructure:"log-level"`
+	Queries               []rp.QueryOutput `json:"queries" mapstructure:"queries"`
+	TotalWorkers          int              `json:"total-workers" mapstructure:"total-workers"`
+	DuplicateProb         float64          `json:"duplicate-prob" mapstructure:"duplicate-prob"`
 }
 
 var requiredFields = []string{
 	"listening-address",
 	"middleware-address",
 	"total-workers",
-	"monitors-count",
 }
 
 // field: default value
 var optionalFields = map[string]interface{}{
 	"log-level":      "INFO",
 	"duplicate-prob": 0.0,
+	// New optional middleware HTTP / auth config
+	"middleware-http-address": "http://rabbitmq:15672/",
+	"middleware-username":     "guest",
+	"middleware-password":     "guest",
 }
 
 // InitConfig reads configuration from a JSON file and environment variables.

@@ -2,7 +2,9 @@ package communication
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -224,4 +226,31 @@ func SendHeartbeatToMonitors(heartBeat string, nodeID string, monitorsCount int)
 	for range t.C {
 		SendMessageToMonitors(addresses, msg)
 	}
+}
+
+// IsAlive performs a non-blocking read probe to verify whether the connection is still open.
+// timeout <= 0 triggers an immediate timeout-based probe.
+func (s *Socket) IsAlive(timeout time.Duration) bool {
+	if s.conn == nil {
+		return false
+	}
+	deadline := time.Now()
+	if timeout > 0 {
+		deadline = time.Now().Add(timeout)
+	}
+	if err := s.conn.SetReadDeadline(deadline); err != nil {
+		return false
+	}
+	defer s.conn.SetReadDeadline(time.Time{})
+	buf := []byte{0}
+	if _, err := s.conn.Read(buf); err != nil {
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return true
+		}
+		if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+			return false
+		}
+		return false
+	}
+	return true
 }

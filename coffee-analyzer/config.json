@@ -1,6 +1,9 @@
 {
     "listening-address": "0.0.0.0:30001",
     "middleware-address": "amqp://guest:guest@rabbitmq:5672/",
+    "middleware-http-address": "http://rabbitmq:15672/",
+    "middleware-username": "guest",
+    "middleware-password": "guest",
     "log-level": "debug",
     "queries": [
         {

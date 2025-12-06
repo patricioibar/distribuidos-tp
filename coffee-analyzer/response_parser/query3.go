@@ -37,9 +37,10 @@ func (rp *ResponseParser) parseQuery3Response() mw.OnMessageCallback {
 			}
 
 			parsedBatch := c.QueryResponseBatch{
-				QueryId: 3,
-				Columns: p.ColumnNames,
-				Rows:    genericRowsToStringRows(p.Rows),
+				QueryId:        3,
+				SequenceNumber: p.SeqNum,
+				Columns:        p.ColumnNames,
+				Rows:           genericRowsToStringRows(p.Rows),
 			}
 
 			data, err := json.Marshal(parsedBatch)
