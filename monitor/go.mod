@@ -5,6 +5,16 @@ go 1.25
 require github.com/docker/docker v28.5.2+incompatible
 
 require (
+	github.com/containerd/log v0.1.0 // indirect
+	github.com/moby/sys/atomicwriter v0.1.0 // indirect
+	github.com/moby/term v0.5.2 // indirect
+	github.com/morikuni/aec v1.0.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.38.0 // indirect
+	golang.org/x/time v0.14.0 // indirect
+	gotest.tools/v3 v3.5.2 // indirect
+)
+
+require (
 	github.com/Microsoft/go-winio v0.4.21 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect

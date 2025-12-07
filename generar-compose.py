@@ -583,7 +583,12 @@ def generate_compose_file(fileName: str, nodes_count: dict):
       for i in range(value):
         if key == "analyst":
           continue
-        nodes_list.append(f"{key}-{i+1}")
+        if "reducer" in key:
+          nodes_list.append(f"{key}")
+        elif "topuser-storename-joiner" in key:
+          nodes_list.append(f"{key}")
+        else:
+          nodes_list.append(f"{key}-{i+1}")
 
     compose_content = f'''
 services:
@@ -623,6 +628,12 @@ nodes_count = {
     "topuser-birthdate-joiner": 3,
     "analyst": 1,
     "monitor": 3,
+    # nodos sin cardinalidad
+    "topuser-reducer": 1,
+    "items-reducer": 1,
+    "tpv-reducer": 1,
+    "topuser-storename-joiner": 1,
+    "items-names-joiner": 1
 }
 
 if __name__ == "__main__":

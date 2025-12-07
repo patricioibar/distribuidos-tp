@@ -3,16 +3,15 @@ package main
 import (
 	"communication"
 	"context"
+	"encoding/binary"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 )
 
 type Config struct {
@@ -44,13 +43,16 @@ func getConfig() Config {
 }
 
 type Monitor struct {
-	mu                    sync.Mutex
-	monitorLastSeen       map[string]time.Time
-	workerLastSeen        map[string]time.Time
-	currentLeader         string
-	electionInProgress    bool
-	okElectionMessageChan chan bool
-	newCoordinatorChan    chan bool
+	mu                     sync.Mutex
+	monitorLastSeen        map[string]time.Time
+	workerLastSeen         map[string]time.Time
+	monitorRestartCooldown map[string]time.Time
+	workerRestartCooldown  map[string]time.Time
+	restartInProgress      map[string]bool
+	currentLeader          string
+	electionInProgress     bool
+	okElectionMessageChan  chan bool
+	newCoordinatorChan     chan bool
 }
 
 const (
@@ -83,13 +85,16 @@ func main() {
 	}
 
 	monitor := &Monitor{
-		mu:                    sync.Mutex{},
-		monitorLastSeen:       monitorLastSeen,
-		workerLastSeen:        workerLastSeen,
-		okElectionMessageChan: make(chan bool, 10),
-		newCoordinatorChan:    make(chan bool, 10),
-		currentLeader:         "",
-		electionInProgress:    false,
+		mu:                     sync.Mutex{},
+		monitorLastSeen:        monitorLastSeen,
+		workerLastSeen:         workerLastSeen,
+		monitorRestartCooldown: make(map[string]time.Time),
+		workerRestartCooldown:  make(map[string]time.Time),
+		restartInProgress:      make(map[string]bool),
+		okElectionMessageChan:  make(chan bool, 10),
+		newCoordinatorChan:     make(chan bool, 10),
+		currentLeader:          "",
+		electionInProgress:     false,
 	}
 
 	addr := net.UDPAddr{
@@ -108,8 +113,24 @@ func main() {
 
 	// espero un poco para la primera eleccion
 	askForActualLeader(config)
-	time.Sleep(1000 * time.Millisecond)
-	startElection(config, monitor)
+	
+	// Wait for coordinator response with timeout
+	select {
+	case <-monitor.newCoordinatorChan:
+		monitor.mu.Lock()
+		log.Printf("Discovered existing leader: %s, skipping election", monitor.currentLeader)
+		monitor.mu.Unlock()
+	case <-time.After(2 * time.Second):
+		monitor.mu.Lock()
+		if monitor.currentLeader == "" {
+			monitor.mu.Unlock()
+			log.Printf("No leader response, starting election")
+			startElection(config, monitor)
+		} else {
+			log.Printf("Leader set during wait: %s", monitor.currentLeader)
+			monitor.mu.Unlock()
+		}
+	}
 
 	ticker := time.NewTicker(500 * time.Millisecond)
 
@@ -130,22 +151,32 @@ func main() {
 					log.Printf("Leader %s failed → starting election", monitorID)
 					monitor.currentLeader = ""
 
-					if !monitor.electionInProgress {
-						monitor.mu.Unlock()
-						startElection(config, monitor)
-						if config.MonitorId == monitor.currentLeader {
-							log.Printf("[Leader] Restarting monitor %s...", monitorID)
-							go restartWorker(monitorID)
-						} else {
-							log.Printf("Not the leader (%s), can't restart monitor %s", config.MonitorId, monitorID)
-						}
+				if !monitor.electionInProgress {
+					monitor.mu.Unlock()
+					startElection(config, monitor)
+					if config.MonitorId == monitor.currentLeader {
 						monitor.mu.Lock()
+						if !monitor.restartInProgress[monitorID] {
+							log.Printf("[Leader] Restarting monitor %s...", monitorID)
+							monitor.monitorRestartCooldown[monitorID] = time.Now()
+							monitor.restartInProgress[monitorID] = true
+							monitor.mu.Unlock()
+							go restartWorkerWithCallback(monitorID, monitor)
+						} else {
+							monitor.mu.Unlock()
+						}
+					} else {
+						log.Printf("Not the leader (%s), can't restart monitor %s", config.MonitorId, monitorID)
 					}
+					monitor.mu.Lock()
+				}
 				} else if config.MonitorId == monitor.currentLeader {
 					// solo el lider puede reiniciar
-					log.Printf("[Leader] Restarting monitor %s...", monitorID)
-					monitor.monitorLastSeen[monitorID] = time.Now().Add(TIMEOUT) // evitar reinicios multiples
-					go restartWorker(monitorID)
+					if lastRestart, exists := monitor.monitorRestartCooldown[monitorID]; !exists || time.Since(lastRestart) > TIMEOUT {
+						log.Printf("[Leader] Restarting monitor %s...", monitorID)
+						monitor.monitorRestartCooldown[monitorID] = time.Now()
+						go restartWorker(monitorID)
+					}
 				}
 			}
 		}
@@ -154,9 +185,15 @@ func main() {
 		if config.MonitorId == monitor.currentLeader {
 			for workerID, last := range monitor.workerLastSeen {
 				if time.Since(last) > TIMEOUT {
-					log.Printf("[Leader] Worker %s DOWN → restarting...", workerID)
-					monitor.workerLastSeen[workerID] = time.Now().Add(TIMEOUT) // evitar reinicios multiples
-					go restartWorker(workerID)
+					if !monitor.restartInProgress[workerID] {
+						// check cooldown to prevent rapid restarts
+						if lastRestart, exists := monitor.workerRestartCooldown[workerID]; !exists || time.Since(lastRestart) > TIMEOUT {
+							log.Printf("[Leader] Worker %s DOWN → restarting...", workerID)
+							monitor.workerRestartCooldown[workerID] = time.Now()
+							monitor.restartInProgress[workerID] = true
+							go restartWorkerWithCallback(workerID, monitor)
+						}
+					}
 				}
 			}
 		}
@@ -186,12 +223,22 @@ func listenUDP(conn *net.UDPConn, config Config, monitor *Monitor) {
 }
 
 func handleMessage(msg []byte, config Config, monitor *Monitor) {
-	if len(msg) < 2 {
+	lenTimeBytes := msg[:4]
+	lenTime := binary.BigEndian.Uint32(lenTimeBytes)
+	timeBytes := msg[4 : 4+lenTime]
+	var timestamp time.Time
+	err := timestamp.UnmarshalBinary(timeBytes)
+	if err != nil {
+		log.Printf("Error unmarshaling time: %v", err)
+		return
+	}
+	if time.Since(timestamp) > TIMEOUT {
+		log.Printf("Stale message received, ignoring")
 		return
 	}
 
-	msgType := msg[0]
-	payload := msg[1:]
+	msgType := msg[4+lenTime]
+	payload := msg[5+lenTime:]
 
 	switch msgType {
 
@@ -237,11 +284,14 @@ func handleMessage(msg []byte, config Config, monitor *Monitor) {
 
 	case MSG_COORDINATOR:
 		monitor.mu.Lock()
-		defer monitor.mu.Unlock()
 		monitor.monitorLastSeen[string(payload)] = time.Now()
 		monitor.currentLeader = string(payload)
 		monitor.electionInProgress = false
-		monitor.newCoordinatorChan <- true
+		monitor.mu.Unlock()
+		select {
+		case monitor.newCoordinatorChan <- true:
+		default:
+		}
 		log.Printf("New leader elected: %s", monitor.currentLeader)
 	}
 }
@@ -298,7 +348,7 @@ func startElection(config Config, monitor *Monitor) {
 	msg := append([]byte{MSG_ELECTION}, []byte(config.MonitorId)...)
 	communication.SendMessageToMonitors(addresses, msg)
 
-	timeout := 3 * time.Second
+	timeout := 1 * time.Second
 
 	select {
 	case <-monitor.okElectionMessageChan:
@@ -334,18 +384,49 @@ func startElection(config Config, monitor *Monitor) {
 }
 
 func restartWorker(containerID string) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		log.Printf("Docker client error: %v", err)
-		return
-	}
-	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	err = cli.ContainerStart(context.Background(), containerID, container.StartOptions{})
-	if err != nil {
-		log.Printf("Restart error for %s: %v", containerID, err)
+	cmd := exec.CommandContext(ctx, "docker", "start", containerID)
+	output, err := cmd.CombinedOutput()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		log.Printf("Restart timeout for %s", containerID)
 		return
 	}
 
-	log.Printf("✓ Restarted: %s", containerID)
+	if err != nil {
+		log.Printf("Restart error for %s: %v, output: %s", containerID, err, string(output))
+		return
+	}
+
+	log.Printf("✓ Restarted: %s, output: %s", containerID, string(output))
+	
+	// Verify container is actually running after start
+	time.Sleep(100 * time.Millisecond)
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer checkCancel()
+	
+	checkCmd := exec.CommandContext(checkCtx, "docker", "inspect", "-f", "{{.State.Running}}", containerID)
+	checkOutput, checkErr := checkCmd.CombinedOutput()
+	
+	if checkErr != nil {
+		log.Printf("Failed to verify %s state: %v", containerID, checkErr)
+		return
+	}
+	
+	running := strings.TrimSpace(string(checkOutput))
+	if running != "true" {
+		log.Printf("⚠ Container %s started but crashed immediately (running=%s)", containerID, running)
+	}
+}
+
+func restartWorkerWithCallback(containerID string, monitor *Monitor) {
+	defer func() {
+		monitor.mu.Lock()
+		delete(monitor.restartInProgress, containerID)
+		monitor.mu.Unlock()
+	}()
+	
+	restartWorker(containerID)
 }
