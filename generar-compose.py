@@ -76,8 +76,6 @@ def add_itemsAggregator_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./items-aggregator-''' + str(i) + r'''/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -114,8 +112,6 @@ def add_itemsReducer_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./items-reducer/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -150,8 +146,6 @@ def add_itemNames_joiner(monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year-month\",\"item_name\",\"sum_subtotal\",\"sum_quantity\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./items-names-joiner/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -188,8 +182,6 @@ def add_tpvAggregator_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./tpv-aggregator-''' + str(i) + r'''/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -225,8 +217,6 @@ def add_tpvReducer_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./tpv-reducer/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -263,8 +253,6 @@ def add_tpv_joiner(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"year\",\"semester\",\"store_name\",\"sum_final_amount\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./tpv-joiner-''' + str(i) + r'''/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -302,8 +290,6 @@ def add_topUserAggregator_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "false"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./topuser-aggregator-''' + str(i) + r'''/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -340,8 +326,6 @@ def add_topUserReducer_service(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       IS_REDUCER: "true"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./topuser-reducer/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -379,8 +363,6 @@ def add_topUserBirthdate_joiner(nodes: int, monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_id\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./topuser-birthdate-joiner-''' + str(i) + r'''/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -416,8 +398,6 @@ def add_topUserStoreName_joiner(monitors_count: int) -> str:
       OUTPUT_BATCH_SIZE: 500
       OUTPUT_COLUMNS: "[\"store_name\",\"birthdate\",\"count_transaction_id\"]"
       MONITORS_COUNT: ''' + str(monitors_count) + r'''
-    volumes:
-      - ./topuser-storename-joiner/.state/:/app/.state/
     depends_on:
       rabbitmq:
         condition: service_healthy
