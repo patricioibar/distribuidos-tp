@@ -587,6 +587,8 @@ def generate_compose_file(fileName: str, nodes_count: dict):
           nodes_list.append(f"{key}")
         elif "topuser-storename-joiner" in key:
           nodes_list.append(f"{key}")
+        elif "items-names-joiner" in key:
+          nodes_list.append(f"{key}")
         else:
           nodes_list.append(f"{key}-{i+1}")
 
