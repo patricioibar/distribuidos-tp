@@ -193,7 +193,14 @@ func SendMessageToMonitors(addresses []*net.UDPAddr, msg []byte) {
 			fmt.Printf("error dialing UDP to address: %v %s", err, addr.String())
 			continue
 		}
-		_, err = conn.Write(msg)
+		time := time.Now()
+		timeBytes, _ := time.MarshalBinary()
+		timeBytesLen := make([]byte, 4)
+		binary.BigEndian.PutUint32(timeBytesLen, uint32(len(timeBytes)))
+		bytes := append([]byte{}, timeBytesLen...)
+		bytes = append(bytes, timeBytes...)
+		bytes = append(bytes, msg...)
+		_, err = conn.Write(bytes)
 		if err != nil {
 			fmt.Println("error sending message:", err)
 		}
